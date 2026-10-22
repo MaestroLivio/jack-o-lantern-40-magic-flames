@@ -125,6 +125,37 @@ fails only on misses — a pack bigger than the corpus is legal (it keeps clips 
 sentences a mission used to say), but a pack padded with unspoken sentences hides a
 real miss in its own inventory.
 
+## Short capitals are spelled out, and must be de-shouted first
+
+`normalize()` calls `deshout()` before hashing. This is a pronunciation fix, not a
+cosmetic one. The game prints its keywords in capitals so a child can see which word
+matters in "Find the **RED**, BLUE and YELLOW pumpkins!", but espeak-ng — the phonemiser
+inside Piper — treats a short all-caps token as an initialism:
+
+```
+"Find the RED pumpkins!"   ->  fˈaɪnd ðɪʲ ˌɑːɹˌiːdˈiː pˈʌmpkɪnz     ("R-E-D")
+"Find the Red pumpkins!"   ->  fˈaɪnd ðə ɹˈɛd pˈʌmpkɪnz              ("red")
+```
+
+The cut-off is the **length of the token**: three characters or fewer is spelled
+(`RED`, `BIG`, `CAT`, and `BLU` in the Italian lines), four or more is read as a word
+(`GREEN`, `HAPPY`, `SPIDER`, `KNEES`). Two letters sits on espeak's own dictionary —
+`IN` and `ON` survive, `IT` would not — so the rule covers one to three and every word
+this game actually uses was measured rather than assumed. Twenty-three sentences in the
+corpus contained a token in the dangerous range; they were the only clips re-recorded,
+and no key collided with another.
+
+`AudioFx.normalize_speech()` must apply the same transform, or the shouted sentence the
+game says would no longer match the key and would fall back to the OS voice, which spells
+`RED` out too. Both tests are in the QA list: `casing_check.gd` pins the transform,
+`casing_lookup_check.gd` proves a shouted sentence still resolves to a clip.
+
+> [!WARNING]
+> Piper is stochastic. Synthesising the same sentence twice produces different WAVs, and
+> durations overlap between the correct and the broken text (measured: `Red` 2.69–3.46 s,
+> `RED` 3.20–3.63 s). You cannot tell from the audio which text produced a file. The
+> filename can: it is the SHA-1 of `lang|normalised sentence`. Read the manifest key.
+
 ## Why not ship Piper itself
 
 Considered and rejected:

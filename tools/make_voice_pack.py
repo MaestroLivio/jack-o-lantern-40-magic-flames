@@ -49,6 +49,7 @@ documented in `tools/VOICE_MODELS.md`. `assets/voice/` holds only the result.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -57,6 +58,10 @@ import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "assets", "voice")
+
+# All-caps words of one to three letters. Kept beside the function that uses it
+# so the threshold in the docstring and the pattern cannot drift apart.
+_SHOUTED = re.compile(r"\b[A-Z]{1,3}\b")
 
 # Ogg Vorbis quality, on libvorbis' -1..10 scale. 3 is ~32 kbps mono at 22 kHz,
 # which is transparent for a single speaking voice and keeps the whole pack near
@@ -69,20 +74,45 @@ VORBIS_QUALITY = 3
 HASH_LEN = 12
 
 
+def deshout(text):
+    """Title-cases every all-caps word of three letters or fewer: `RED` -> `Red`.
+
+    This is a *pronunciation* fix. The game writes its keywords in capitals so a
+    child can spot them — "Find the RED, BLUE and YELLOW pumpkins!" — and that is
+    correct on screen. But espeak-ng, the phonemiser inside Piper, reads a short
+    all-caps word as an initialism and spells it out. Measured on `cori`:
+
+        "Find the RED pumpkins!"  ->  fˈaɪnd ðɪʲ ˌɑːɹˌiːdˈiː pˈʌmpkɪnz   ("R-E-D")
+        "Find the Red pumpkins!"  ->  fˈaɪnd ðə ɹˈɛd pˈʌmpkɪnz            ("red")
+
+    The rule is length, not the word: three characters or fewer is spelled
+    (`RED`, `BIG`, `CAT`, and `BLU` in the Italian lines), four or more is read
+    (`GREEN`, `HAPPY`, `SPIDER`). Two letters depends on espeak's dictionary —
+    `IN` and `ON` survive — so the rule covers one to three and the words this
+    game uses were each measured rather than assumed.
+
+    `AudioFx.normalize_speech()` applies the identical transform on the lookup
+    side. The two must agree exactly: fixing only one would make the sentence
+    miss the pack and fall back to the system voice, which spells `RED` too.
+    """
+    return _SHOUTED.sub(lambda m: m.group(0)[0] + m.group(0)[1:].lower(), text)
+
+
 def normalize(text):
     """The form used both as the lookup key and as the hash input.
 
-    Mirrors `AudioFx.normalize_speech()`: whitespace collapsed, trimmed, and
-    curly quotes folded onto straight ones, because the story text uses `"` and
-    `'` and a different editor may produce `"` for the same sentence. A key that
-    differs by one apostrophe would silently fall back to the system voice.
+    Mirrors `AudioFx.normalize_speech()`: whitespace collapsed, trimmed, curly
+    quotes folded onto straight ones, and short all-caps words de-shouted. The
+    quote folding is there because the story text uses `"` and `'` and a
+    different editor may produce `"` for the same sentence. A key that differs by
+    one apostrophe would silently fall back to the system voice.
     """
     text = str(text)
     for a, b in (("\u2019", "'"), ("\u2018", "'"), ("\u201c", '"'), ("\u201d", '"'),
                  ("\u2014", "-"), ("\u2013", "-"), ("\u00a0", " ")):
         text = text.replace(a, b)
     text = " ".join(text.split())
-    return text.strip()
+    return deshout(text).strip()
 
 
 def clip_name(text, lang):

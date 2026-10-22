@@ -212,6 +212,30 @@ func speak(text: String, lang: String = "en", rate: float = 0.9) -> void:
 ## typographic characters are folded because the story text uses `'` and `"`,
 ## while a different editor (or a teacher's correction) may produce `'` and `"`
 ## for exactly the same sentence.
+##
+## It also *de-shouts* short all-caps words, which is a pronunciation fix, not a
+## cosmetic one. The game writes its keywords in capitals so a seven-year-old can
+## see the word that matters at the end of a long line — "Find the RED, BLUE and
+## YELLOW pumpkins!" — and that is the right thing on screen. But espeak-ng, the
+## phonemiser inside the recorded voice, treats a short all-caps word as an
+## initialism and spells it out letter by letter. Measured with `cori`:
+##
+##     "Find the RED pumpkins!"  ->  fˈaɪnd ðɪʲ ˌɑːɹˌiːdˈiː pˈʌmpkɪnz   ("R-E-D")
+##     "Find the Red pumpkins!"  ->  fˈaɪnd ðə ɹˈɛd pˈʌmpkɪnz            ("red")
+##
+## The threshold is length, not the word: every all-caps token of three
+## characters or fewer is spelled (`RED`, `BIG`, `CAT`, and `BLU` in the Italian
+## lines), while four or more are read normally (`GREEN`, `HAPPY`, `SPIDER`). Two
+## letters is a borderline zone that depends on espeak's own dictionary (`IN` and
+## `ON` survive, `IT` would not), so the rule covers one to three and the words
+## the game actually uses were each measured. Title-casing leaves the ones that
+## were already correct byte-identical, so the change cannot introduce a
+## regression in them.
+##
+## `tools/make_voice_pack.py` applies the identical transform before synthesising,
+## so the key and the audio are produced from the same string. Fixing it in only
+## one of the two would be worse than not fixing it: the lookup would miss and the
+## whole line would fall back to the system voice, which spells `RED` as well.
 func normalize_speech(text: String) -> String:
 	var out := text
 	for pair in [["\u2019", "'"], ["\u2018", "'"], ["\u201c", "\""], ["\u201d", "\""],
@@ -220,7 +244,30 @@ func normalize_speech(text: String) -> String:
 	out = out.replace("\n", " ").replace("\r", " ")
 	while out.contains("  "):
 		out = out.replace("  ", " ")
+	out = deshout(out)
 	return out.strip_edges()
+
+
+## Title-cases every all-caps word of three letters or fewer: `RED` -> `Red`.
+##
+## Split out so it can be tested on its own, and so the reason it exists is not
+## buried in the middle of the whitespace folding. See `normalize_speech()` for
+## the measurement behind the threshold. One-letter words (`A`, `I`) come back
+## unchanged because their capitalised form is themselves, which is what we want.
+func deshout(text: String) -> String:
+	var shouted := RegEx.create_from_string("\\b[A-Z]{1,3}\\b")
+	if shouted == null:
+		return text
+	var out := text
+	var found := shouted.search_all(out)
+	# Rewritten back to front so an earlier replacement cannot shift the offsets
+	# of the ones still to come.
+	for i in range(found.size() - 1, -1, -1):
+		var m := found[i]
+		var token := m.get_string()
+		var quieter := token.substr(0, 1) + token.substr(1).to_lower()
+		out = out.substr(0, m.get_start()) + quieter + out.substr(m.get_end())
+	return out
 
 
 ## Reads the manifest once. A missing or unreadable pack is not an error: the

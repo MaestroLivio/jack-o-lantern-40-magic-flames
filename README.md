@@ -9,18 +9,18 @@ Jack is a clumsy pumpkin-boy. A gust of wind scattered the **40 Magic Flames of 
 ## Building the release (Windows + macOS)
 
 ```bash
-tools/build_release.sh 1.0.2          # both platforms
-tools/build_release.sh 1.0.2 macos    # macOS only
-tools/build_release.sh 1.0.2 windows  # Windows only
+tools/build_release.sh 1.0.3          # both platforms
+tools/build_release.sh 1.0.3 macos    # macOS only
+tools/build_release.sh 1.0.3 windows  # Windows only
 ```
 
 Output lands in `dist/`:
 
 | Artefact | What it is |
 |---|---|
-| `JackOLantern-Setup-1.0.2.exe` | Windows installer (NSIS, per-user, no admin) |
+| `JackOLantern-Setup-1.0.3.exe` | Windows installer (NSIS, per-user, no admin) |
 | `windows/JackOLantern.exe` | Portable Windows build |
-| `JackOLantern-1.0.2.dmg` | macOS disk image (drag to Applications) |
+| `JackOLantern-1.0.3.dmg` | macOS disk image (drag to Applications) |
 | `macos/JackOLantern.zip` | The `.app` on its own |
 | `README.txt` | Teacher instructions, embedded in both installers |
 
@@ -31,7 +31,7 @@ edits: pass the new number to the script, then update
 `application/file_version` + `application/product_version` (Windows) and
 `application/short_version` + `application/version` (macOS) in
 [`export_presets.cfg`](file:///Users/livioluppino/Downloads/Halloween%20game/export_presets.cfg).
-Skipping the second leaves a 1.0.2 installer wrapping an exe whose Properties
+Skipping the second leaves a 1.0.3 installer wrapping an exe whose Properties
 still say 1.0.0.0 — check with:
 
 ```bash
@@ -42,7 +42,7 @@ ditto -x -k dist/macos/JackOLantern.zip /tmp/v \
 
 # Windows: the version block in the PE resources, read straight from the exe
 python3 -c "d=open('dist/windows/JackOLantern.exe','rb').read(); \
-print('ok' if '1.0.2.0'.encode('utf-16-le') in d else 'STALE VERSION')"
+print('ok' if '1.0.3.0'.encode('utf-16-le') in d else 'STALE VERSION')"
 ```
 
 The macOS build is **universal** (`x86_64` + `arm64`) and **ad-hoc signed**,
@@ -361,9 +361,9 @@ places and most of them assemble the text at runtime (`"Find %s first!" % word`,
 every call site and getting each of them right, and the first one missed would silently go
 back to the machine's voice. A lookup on the normalised sentence covers all of them —
 including the call sites a future edit adds. Both sides normalise identically (`AudioFx.
-normalize_speech()` and `normalize()` in `tools/make_voice_pack.py`): whitespace collapsed
-and curly quotes folded, because a key that differs by one apostrophe is a sentence that
-falls back to the system voice.
+normalize_speech()` and `normalize()` in `tools/make_voice_pack.py`): whitespace collapsed,
+curly quotes folded, and short all-caps keywords de-shouted — because a key that differs by
+one apostrophe, or by the case of `RED`, is a sentence that falls back to the system voice.
 
 Measured: **880 sentences** (714 English, 166 Italian), ~32 minutes of audio, **13.0 MB**
 at Vorbis `-q 3`. That is the corpus *after* removing the sentences that no code path
@@ -403,6 +403,42 @@ voice can become inconsistent mid-lesson. It reports both counts (`corpus=880,
 manifest=880`) because the two faults are different: a *miss* means nobody recorded a
 sentence the game says, whereas an oversized manifest just means the pack still carries
 clips for sentences a mission used to say. Only misses and broken clips fail the run.
+
+#### Shouted keywords are de-shouted before they are spoken
+The game writes its keywords in capitals so a seven-year-old can see which word matters —
+"Find the **RED**, BLUE and YELLOW pumpkins!". That is right on screen and wrong in the
+synthesiser: espeak-ng, the phonemiser inside Piper, reads a short all-caps word as an
+initialism and spells it out. Measured with `cori`:
+
+```
+"Find the RED pumpkins!"   ->  fˈaɪnd ðɪʲ ˌɑːɹˌiːdˈiː pˈʌmpkɪnz     ("R-E-D")
+"Find the Red pumpkins!"   ->  fˈaɪnd ðə ɹˈɛd pˈʌmpkɪnz              ("red")
+```
+
+The threshold is the **length**, not the word: three characters or fewer is spelled
+(`RED`, `BIG`, `CAT`, and `BLU` in the Italian lines), four or more is read normally
+(`GREEN`, `HAPPY`, `SPIDER`). `AudioFx.normalize_speech()` and `normalize()` in
+`tools/make_voice_pack.py` therefore de-shout short all-caps words before the key is
+computed, on both sides. The screen text is untouched — `normalize_speech()` is called only
+from `speak()`.
+
+Both sides must agree, which is why the fix is two lines and one test each rather than a
+list of special cases: if only one side de-shouted, the lookup would miss and the sentence
+would fall back to the OS voice, which spells `RED` too — the bug would return looking
+identical. `tools/casing_check.gd` pins the transform (including lines that must stay
+unchanged), and `tools/casing_lookup_check.gd` proves the shouted sentence the game says
+still lands on the clip recorded from the de-shouted one.
+
+```bash
+godot --headless --path . --script tools/casing_check.gd          # 18 checks
+godot --headless --path . --script tools/casing_lookup_check.gd   # 11 sentences, 0 misses
+```
+
+> [!NOTE]
+> Piper is stochastic: the same sentence synthesised twice gives two different WAVs, so
+> comparing clip durations does not tell you which text produced a file. The filename does —
+> it is the SHA-1 of `lang|normalised sentence`. When checking a regenerated clip, read the
+> manifest key rather than the audio.
 
 
 ### Regenerating the music
@@ -485,6 +521,14 @@ godot --headless --path . --script tools/speech_timeline.gd 2>&1 \
 # that every clip it indexes really loads. Exit code 0 = the pack is complete.
 godot --headless --path . --script tools/voice_pack_check.gd
 
+# Assert that short all-caps keywords (RED, BIG, CAT, BLU) are de-shouted before
+# synthesis, and that long ones (GREEN, HAPPY) are left alone
+godot --headless --path . --script tools/casing_check.gd
+
+# Assert that a shouted sentence the game writes still resolves to the clip
+# recorded from its de-shouted form (i.e. the fix did not merely move the miss)
+godot --headless --path . --script tools/casing_lookup_check.gd
+
 # Print the corpus the pack is built from (one JSON object per line)
 godot --headless --path . --script tools/collect_speech.gd
 
@@ -516,9 +560,17 @@ all three difficulty levels both before and after a challenge is solved),
 **33 / 33 fold checks**, **6 / 6 input-guard checks** (Jack moves 0.000 m, the
 camera does not turn and the interact key does nothing while a quiz or a
 dialogue owns the screen), **no overlapping panels**,
-**23 / 23 graphics assertions**, and **880 / 880 voice clips** (the corpus the
+**23 / 23 graphics assertions**, **880 / 880 voice clips** (the corpus the
 game can say and the manifest agree exactly; 0 misses, 0 clips that fail to
-load).
+load), **18 / 18 casing checks** and **11 / 11 shouted sentences still find
+their clip**.
+
+The last two are new and exist because of a bug a child would hear rather than
+see: the screen says **RED** and the voice said "R-E-D", because espeak-ng reads
+a short all-caps word as an initialism. The fix de-shouts it on both sides, and
+the two tests pin both halves — the transform itself, and the fact that the
+shouted sentence the game really says still lands on the clip recorded from the
+de-shouted one. Testing only the first would pass while the lookup missed.
 
 Every probe now ends through `tools/probe_shutdown.gd` instead of calling
 `quit()` itself. `stop()` only *asks* the audio server to release a playback and
