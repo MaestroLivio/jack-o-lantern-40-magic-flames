@@ -34,11 +34,20 @@ signal camera_mode_changed(mode: int)
 signal back_pressed
 
 const PANEL_W := 720.0
-## Tall enough for the three steppers, the hint line, the auto-hide switch and
-## BACK. The switch row added 60 px; the panel grew past its declared frame
-## rather than clipping, which the layout probe measured as 577 px of content
-## inside a 560 px frame. 610 leaves that row room without changing the width.
-const PANEL_H := 610.0
+## Tall enough for the three steppers, the hint line, the three switches and
+## BACK.
+##
+## The history of this number is the reason it is what it is. The auto-hide
+## switch pushed the content to 577 px inside a 560 px frame (measured by
+## `tools/layout_check.gd`, which reports the minimum size of the whole page);
+## the frame was raised to 610 to hold it. Adding the camera and touch-pad
+## switches put two more rows on the page — 2 x (48 + 14) = 124 px — which does
+## not fit in 720 even at 610. Rather than grow past the design height, the page
+## was tightened: separation 14 -> 10 and margins 24 -> 20 give back 32 + 8 px,
+## which pays for most of the two rows, and the frame sits at 680 with a little
+## slack. Measured, not guessed: `layout_check.gd` is what said 577 in the first
+## place, and it is what validates this number too.
+const PANEL_H := 680.0
 ## Height of one stepper row, matching the difficulty row on the pause page.
 const ROW_H := 58.0
 ## Width of the name column, so every row lines up and the arrows form a
@@ -62,6 +71,12 @@ var _view_segments: Array[ColorRect] = []
 ## yes/no question ("may the game put the words away?"), and a checkbox is the
 ## only control a child already knows.
 var _auto_hide_toggle: CheckButton
+## The two switches added for the camera and the touch pad. Kept as members for
+## the same reason as `_auto_hide_toggle`: `refresh()` is what re-syncs the page
+## with `QuestManager` after a `continue`, and a switch rebuilt from a stale
+## value would show the opposite of the truth the moment the child saved.
+var _auto_camera_toggle: CheckButton
+var _touch_controls_toggle: CheckButton
 
 
 func _ready() -> void:
@@ -85,9 +100,12 @@ func _build() -> void:
 		UiKit.panel_style(UiKit.COL_PANEL, UiKit.COL_ACCENT, 6, 36))
 	add_child(panel)
 
-	var m := UiKit.margin(24)
+	var m := UiKit.margin(20)
 	panel.add_child(m)
-	var v := UiKit.vbox(14)
+	# 10 rather than 14: see `PANEL_H`. The page gained two rows and the only
+	# alternatives were to shrink the gaps or to grow past the 720 px design
+	# height, which would clip on a short window.
+	var v := UiKit.vbox(10)
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	m.add_child(v)
 
@@ -141,6 +159,57 @@ func _build() -> void:
 	)
 	hide_row.add_child(_auto_hide_toggle)
 	v.add_child(hide_row)
+
+	# --- Camera follows Jack ------------------------------------------------
+	# The second switch, and the same reasoning as the one above: "should the
+	# view turn by itself?" is one yes/no question. It is ON by default because
+	# a child who never touches the mouse would otherwise walk into a corner and
+	# stay looking at the same wall — the request that added this feature was
+	# literally "per semplificare la giocabilità".
+	#
+	# Turning it off is not a downgrade: every manual way of aiming the camera
+	# stays exactly as it was (drag, Q/E, right stick), so the switch only ever
+	# adds or removes the automatic part.
+	var camera_row := UiKit.hbox(14)
+	camera_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	camera_row.custom_minimum_size = Vector2(0, 46)
+	var camera_label := UiKit.label("Camera follows Jack", 22,
+		UiKit.COL_TEXT, HORIZONTAL_ALIGNMENT_LEFT, false)
+	camera_label.custom_minimum_size = Vector2(LABEL_W + 110.0, 0)
+	camera_row.add_child(camera_label)
+	_auto_camera_toggle = CheckButton.new()
+	_auto_camera_toggle.button_pressed = QuestManager.auto_camera
+	_auto_camera_toggle.tooltip_text = "The view turns by itself to stay behind Jack"
+	_auto_camera_toggle.toggled.connect(func(on: bool) -> void:
+		QuestManager.set_auto_camera(on)
+		QuestManager.save_progress()
+		AudioFx.play_sfx("pop")
+	)
+	camera_row.add_child(_auto_camera_toggle)
+	v.add_child(camera_row)
+
+	# --- Buttons on screen --------------------------------------------------
+	# ON by default: on a tablet there is no keyboard, so without the pad the
+	# child can look around and tap things but cannot walk — the game is not
+	# playable at all. On a laptop the pad is merely redundant, and a child who
+	# finds it in the way can fold it with the tab or switch it off here.
+	var pad_row := UiKit.hbox(14)
+	pad_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pad_row.custom_minimum_size = Vector2(0, 46)
+	var pad_label := UiKit.label("Buttons on screen", 22,
+		UiKit.COL_TEXT, HORIZONTAL_ALIGNMENT_LEFT, false)
+	pad_label.custom_minimum_size = Vector2(LABEL_W + 110.0, 0)
+	pad_row.add_child(pad_label)
+	_touch_controls_toggle = CheckButton.new()
+	_touch_controls_toggle.button_pressed = QuestManager.touch_controls
+	_touch_controls_toggle.tooltip_text = "A D-pad and TAP button, for a touch screen"
+	_touch_controls_toggle.toggled.connect(func(on: bool) -> void:
+		QuestManager.set_touch_controls(on)
+		QuestManager.save_progress()
+		AudioFx.play_sfx("pop")
+	)
+	pad_row.add_child(_touch_controls_toggle)
+	v.add_child(pad_row)
 
 	var back := UiKit.button("BACK", null, Vector2(240, 56))
 	back.add_theme_stylebox_override("normal",
@@ -276,6 +345,10 @@ func refresh() -> void:
 	# show the wrong answer and the next press would "change" it to itself.
 	if _auto_hide_toggle != null:
 		_auto_hide_toggle.set_pressed_no_signal(QuestManager.auto_hide_ui)
+	if _auto_camera_toggle != null:
+		_auto_camera_toggle.set_pressed_no_signal(QuestManager.auto_camera)
+	if _touch_controls_toggle != null:
+		_touch_controls_toggle.set_pressed_no_signal(QuestManager.touch_controls)
 
 
 func _set_row(left: Button, right: Button, value_label: Label,

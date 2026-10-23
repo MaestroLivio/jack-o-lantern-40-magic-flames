@@ -262,7 +262,10 @@ REQUIREMENTS (BOTH)
   The voice is recorded into the game itself (a British English voice, plus an
   Italian one for the translate button), so it sounds the same on every
   computer and does not depend on what is installed on this one.
-* A mouse. Everything can also be played with a gamepad (Xbox layout).
+* A mouse, or a touch screen, or a gamepad (Xbox layout).
+  On a touch screen the buttons for walking appear on the left edge by
+  themselves; they can be put away with the small strip at the end of the row,
+  or switched off altogether in the pause menu (Esc > SETTINGS).
 
 
 HOW TO PLAY
@@ -280,6 +283,12 @@ Pause         Esc  (difficulty, controls, sound and easy-read letters live
 
 A gamepad works too: left stick to walk, A to interact, Start to pause,
 Y for the Italian help.
+
+On a tablet there is a D-pad drawn on the left edge of the screen, a TAP button
+next to it and the magnifying glass above it. The narrow strip at the far end of
+that row puts the buttons away and leaves a small star in the same place; tap
+the star to bring them back. Pause menu > SETTINGS > "Buttons on screen" turns
+them off for good on a computer that has a keyboard.
 
 
 FOR TEACHERS

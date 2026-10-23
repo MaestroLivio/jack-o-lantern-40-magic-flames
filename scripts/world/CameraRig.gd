@@ -73,6 +73,30 @@ const FP_BLEND_SPEED := 3.2
 const FP_PITCH := -0.14
 const PAD_LOOK_SPEED := 1.9
 const PAD_ZOOM_SPEED := 3.4
+## Automatic chase: the rig eases its own yaw until it sits behind Jack's
+## shoulders, so after a corner the child never has to drag the view to see
+## where he is going. It is the single biggest playability win on a screen the
+## child cannot look around with a mouse, and it can be switched off in SETTINGS
+## (`QuestManager.auto_camera`) for anyone who prefers to aim the camera.
+##
+## The rate is deliberately lazy and exponential rather than a constant angular
+## speed: a big correction therefore starts fast and settles instead of
+## overshooting, and a small one is barely visible.
+const AUTO_CAMERA_SPEED := 1.6
+## Seconds after the child last looked around by hand before the chase resumes.
+## Long enough to read a pumpkin on the far side of a hedge, short enough that
+## the view is back behind Jack by the time he starts walking again.
+const AUTO_CAMERA_RESUME := 3.0
+## Steering further than this to the left or right pauses the chase.
+##
+## This is not a comfort tweak, it is what keeps the whole thing from spinning.
+## Movement is camera-relative, so "right" means "keep going to the right of
+## wherever the camera points": a chase that followed Jack's heading *while he
+## strafed* would have a permanent 90-degree error and walk the pair round in a
+## circle for as long as the key is held. Ignoring lateral input breaks that
+## feedback loop — the child strafes, lets go, and the view then swings round to
+## show what Jack is facing.
+const AUTO_CAMERA_STEER_DEADZONE := 0.25
 ## The orbit camera is never allowed under the ground, whatever the maths say.
 const MIN_CAMERA_HEIGHT := 0.6
 const MIN_WHEEL_STEP := 0.7
@@ -96,6 +120,20 @@ var _first_person := false
 ## 0 = orbit, 1 = first person. Animated towards `_first_person` so the change
 ## of view reads as a step forward rather than a cut.
 var _fp_blend: float = 0.0
+
+## Whether the rig steers itself behind Jack. Public because the level applies
+## `QuestManager.auto_camera` on the first frame and again every time the child
+## flips the switch on the SETTINGS page.
+var auto_camera: bool = true
+## Milliseconds until which a manual look wins over the chase. Every drag, every
+## Q/E/R/F press and every nudge of the right stick stamps it, so the automatic
+## camera can never fight a child who is busy looking around. `AUTO_CAMERA_RESUME`
+## is how long the pause lasts.
+var _manual_until: int = 0
+## The chase stays parked until the child has moved once. Without this the very
+## first second of the game would spin the opening shot — Jack standing in the
+## graveyard facing the camera — a half turn away before he has pressed a key.
+var _auto_armed := false
 
 ## What the settings page allows: 0 = auto (scroll decides), 1 = always first
 ## person, 2 = never. Mirrors `QuestManager.CAMERA_MODES`.
@@ -140,6 +178,21 @@ func snap_to_target() -> void:
 	if target == null:
 		return
 	global_position = target.global_position
+	# A teleport is not a camera move: the child was looking at the old place
+	# an instant ago and is now somewhere else entirely. With the chase on, the
+	# easing would spend a second and a half sweeping the new zone past them, so
+	# the arrival pose is taken straight from Jack's heading instead.
+	#
+	# Only once the chase has been armed, though. The *first* snap of a session
+	# is the opening shot, and that shot is deliberately taken from the front —
+	# Jack facing the lens, which is how every zone introduces him. The chase
+	# arms itself on the child's first step (see `_auto_armed`), so leaving
+	# `_yaw` alone here is what keeps that framing.
+	if auto_camera and not _first_person and _auto_armed:
+		_yaw = _behind_yaw()
+		# The pause is stamped too, so a mission that starts by turning him
+		# round does not drag the view back mid-sentence.
+		_note_manual_look()
 	_fp_blend = 1.0 if _first_person else 0.0
 	_update_camera(0.0)
 
@@ -150,7 +203,113 @@ func _process(delta: float) -> void:
 	var desired := target.global_position
 	global_position = global_position.lerp(desired, clampf(follow_speed * delta, 0.0, 1.0))
 	_process_gamepad(delta)
+	_process_auto_camera(delta)
 	_update_camera(delta)
+
+
+## Eases the view round behind Jack after he has turned a corner.
+##
+## Three things are deliberately *not* touched:
+##   * **pitch** — a child who tilted the view down to read the floor keeps that
+##     angle; changing two axes at once is what makes an auto camera feel like
+##     it is driving itself,
+##   * **distance** — zoom is the child's, and `_apply_zoom()` owns first person,
+##   * **first person** — there the camera is Jack's eyes and the aim *is* the
+##     view, so chasing his body would be a feedback loop that never settles.
+##
+## The target yaw is Jack's heading *plus half a turn*, and both halves of that
+## need explaining because the sign is easy to get backwards.
+##
+## The orbit pose sits at `basis3 * (0, 0, distance)`, i.e. on the rig's local
+## +Z. So a rig yaw of y places the camera at roughly `(sin y, 0, cos y)` away
+## from Jack, and it then looks back at him — with a view direction of
+## `(-sin y, 0, -cos y)`.
+##
+## Jack is built with his face on his *local +Z* (the carved eyes are at
+## `z = +0.33` in `Jack._build_visual()`), and he turns with
+## `rotation.y = atan2(direction.x, direction.z)`, which makes local +Z point
+## along the walking direction. So at `rotation.y == y` his face points along
+## `(sin y, 0, cos y)` — exactly where the camera would be. `yaw == rotation.y`
+## therefore parks the camera in his face.
+##
+## Adding PI puts the camera on the opposite side, looking the same way he does.
+##
+## Sanity check with real numbers. At spawn Jack is at `rotation.y = 0` (facing
+## +Z) and the rig is at `_yaw = 0`, which puts the camera at +Z: he looks
+## straight at the lens, which is how every zone is introduced. Press forward
+## and he walks away from the camera along -Z, so his `rotation.y` becomes PI;
+## `PI + PI = 2PI = 0` is the yaw the camera already has, so the chase asks for
+## no movement at all. The naive `yaw = rotation.y` would demand PI there —
+## half a turn, into his face — and then, because movement is camera-relative,
+## flip what "forward" means and send the whole loop spinning. That is the bug
+## the half turn fixes.
+func _process_auto_camera(delta: float) -> void:
+	if not auto_camera or _first_person or _dragging:
+		return
+	if Time.get_ticks_msec() < _manual_until:
+		return
+	# Steering hard to the left or right pauses the chase. Movement is
+	# camera-relative, so while the child holds a lateral key Jack's heading and
+	# the camera's yaw are permanently 90 degrees apart: chasing it would rotate
+	# the camera, which rotates "right", which rotates Jack... a stable circle
+	# that never converges. Releasing the key ends the pause, and the view then
+	# swings round to show the direction he is now facing.
+	var steer := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	if absf(steer.x) > AUTO_CAMERA_STEER_DEADZONE:
+		return
+	# Walking *towards* the camera pauses it too, for the same reason and with a
+	# nastier failure mode. Pressing back turns Jack round to face the lens; the
+	# chase then wants to get behind him, which rotates the camera, which rotates
+	# what "back" means, which turns him further — a loop that runs at the chase
+	# speed for as long as the key is held and looks like the world spinning.
+	# Forward and neutral are the cases where the feedback is negative (the rig
+	# yaw that satisfies both constraints is the one it already has), so those
+	# are the only ones where chasing converges.
+	if steer.y > AUTO_CAMERA_STEER_DEADZONE:
+		return
+	if not _auto_armed:
+		# Wait for the first deliberate step before taking the view over, so the
+		# opening framing — Jack facing the camera, which is how the game
+		# introduces him — survives until the child actually does something.
+		if steer.length() < 0.2:
+			return
+		_auto_armed = true
+	# `lerp_angle` takes the shortest way round: without it Jack crossing the
+	# -180/180 seam would send the view the long way and the graveyard would
+	# sweep past in a full circle.
+	_yaw = lerp_angle(_yaw, _behind_yaw(), clampf(AUTO_CAMERA_SPEED * delta, 0.0, 1.0))
+
+
+## The rig yaw that stands the camera behind Jack, looking where he looks.
+## See `_process_auto_camera()` for why the half turn is there; it is extracted
+## into a function only because three callers need exactly the same value and
+## three copies of `+ PI` is three chances to forget one.
+func _behind_yaw() -> float:
+	if target == null or not is_instance_valid(target):
+		return _yaw
+	return target.rotation.y + PI
+
+
+## Applies the SETTINGS page's choice. Public because the level calls it once
+## when the rig is built and again whenever the child flips the switch.
+func apply_auto_camera(enabled: bool) -> void:
+	auto_camera = enabled
+	# Switching it back on should not snap the view: the chase eases in from
+	# wherever the child had left it, and re-arms only after the next step.
+	_auto_armed = false
+	if not enabled:
+		# Nothing to do beyond the flag, but clearing the pause means switching
+		# it off and on again inside three seconds does not look broken.
+		_manual_until = 0
+
+
+## Hands the view back to the child for `AUTO_CAMERA_RESUME` seconds.
+##
+## Called from every manual look — drag, keys, stick — rather than from the
+## setting, because the promise the setting makes is "the camera moves *for*
+## you", not "the camera moves *instead of* you".
+func _note_manual_look() -> void:
+	_manual_until = Time.get_ticks_msec() + int(AUTO_CAMERA_RESUME * 1000.0)
 
 
 ## Right stick looks, LB / RB zoom.
@@ -169,9 +328,11 @@ func _process_gamepad(delta: float) -> void:
 		Input.get_joy_axis(device, JOY_AXIS_RIGHT_Y))
 	if absf(look.x) > 0.18:
 		_yaw -= look.x * PAD_LOOK_SPEED * delta
+		_note_manual_look()
 	if absf(look.y) > 0.18:
 		var lim := _pitch_limits()
 		_pitch = clampf(_pitch - look.y * PAD_LOOK_SPEED * 0.75 * delta, lim.x, lim.y)
+		_note_manual_look()
 	var zoom := 0.0
 	if Input.is_joy_button_pressed(device, JOY_BUTTON_LEFT_SHOULDER):
 		zoom -= 1.0
@@ -366,6 +527,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_yaw -= motion.relative.x * mouse_orbit_speed
 		var lim := _pitch_limits()
 		_pitch = clampf(_pitch - motion.relative.y * mouse_orbit_speed, lim.x, lim.y)
+		# A drag is the child asking to look somewhere specific: hand the view
+		# over for a few seconds instead of dragging it back under their hand.
+		_note_manual_look()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		# Never steal a gameplay key. The camera is the last thing to look at an
@@ -381,21 +545,32 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.physical_keycode if event.physical_keycode != KEY_NONE else event.keycode:
 			KEY_Q:
 				_yaw += 0.12
+				_note_manual_look()
 				get_viewport().set_input_as_handled()
 			KEY_E:
 				_yaw -= 0.12
+				_note_manual_look()
 				get_viewport().set_input_as_handled()
 			KEY_R:
 				var up_lim := _pitch_limits()
 				_pitch = clampf(_pitch + 0.08, up_lim.x, up_lim.y)
+				_note_manual_look()
 				get_viewport().set_input_as_handled()
 			KEY_F:
 				var down_lim := _pitch_limits()
 				_pitch = clampf(_pitch - 0.08, down_lim.x, down_lim.y)
+				_note_manual_look()
 				get_viewport().set_input_as_handled()
 
 
 ## Points the camera at an angle that frames a mission area in front of Jack.
+##
+## With the automatic chase on, "in front of Jack" *is* behind his shoulders, so
+## the yaw is taken from him rather than reset to zero: zero is the absolute
+## world axis, which only happens to be right in the opening graveyard. The
+## chase stays parked for `AUTO_CAMERA_RESUME` afterwards so the framing is not
+## immediately undone by the easing.
 func frame_forward() -> void:
-	_yaw = 0.0
 	_pitch = -0.55
+	_yaw = _behind_yaw()
+	_note_manual_look()

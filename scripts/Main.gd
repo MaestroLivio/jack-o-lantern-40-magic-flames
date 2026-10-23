@@ -24,6 +24,12 @@ var menu_layer: CanvasLayer
 
 var level: Level
 var hud: Hud
+## On-screen D-pad for touch screens, drawn *above* the HUD (same `CanvasLayer`,
+## added afterwards). Separate from `Hud` rather than a child of it because the
+## two have nothing to say to each other and very different lifetimes: the HUD
+## is rebuilt whenever the font setting changes, the pad only when the setting
+## or the fold state does. See `scripts/ui/TouchControls.gd`.
+var touch_pad: TouchControls
 var zone_intro: ZoneIntroCard
 var title_screen: TitleScreen
 var pause_menu: PauseMenu
@@ -66,6 +72,7 @@ func _ready() -> void:
 	_build_layers()
 	_build_level()
 	_build_hud()
+	_build_touch_pad()
 	_build_menus()
 	_connect_signals()
 
@@ -224,6 +231,25 @@ func _build_hud() -> void:
 	hud.pause_pressed.connect(_on_pause)
 	hud.repeat_audio_pressed.connect(_on_repeat_audio)
 	level.hud = hud
+
+
+## Builds the touch overlay. Called right after `_build_hud()` so it is the
+## later sibling and therefore drawn on top: the pad is a set of buttons that
+## must stay pressable, while the HUD is scenery the child reads.
+##
+## It is built unconditionally, even when the setting is off, because the
+## setting can be turned on from the pause menu *during* a mission and a pad
+## that only exists after the next zone load would look broken. `_ready()` on
+## the node hides it when the setting says so, which costs one hidden `Control`
+## and saves a rebuild path that would have to be duplicated in `_rebuild_ui()`.
+func _build_touch_pad() -> void:
+	touch_pad = TouchControls.new()
+	touch_pad.name = "TouchControls"
+	ui_layer.add_child(touch_pad)
+	touch_pad.set_gameplay_active(screen == Screen.PLAYING)
+	# The level needs this reference for one reason only: a press on the pad must
+	# not also raycast the world behind it. See `Level._try_click()`.
+	level.touch_pad = touch_pad
 
 
 func _build_menus() -> void:
@@ -465,6 +491,11 @@ func _set_gameplay_active(active: bool) -> void:
 	if level != null:
 		level.set_gameplay_live(live)
 	hud.visible = active
+	# The pad answers to the same question as the HUD, and it is told rather than
+	# assigned: it has two other reasons to be hidden (the setting and the fold)
+	# that a bare `visible = active` here would silently overrule.
+	if touch_pad != null:
+		touch_pad.set_gameplay_active(active)
 
 
 ## Drives one mission to completion by calling the same handlers a child's
@@ -898,9 +929,21 @@ func _rebuild_ui() -> void:
 	# remembered and re-opened at the end instead of being dropped on the floor.
 	var was_story := screen == Screen.STORY
 	var story_page: Dictionary = Story.chapter_for(QuestManager.current_mission_id) if was_story else {}
+	# Both overlays are freed *first*, then rebuilt in build order, so the drawing
+	# order cannot be inverted by the rebuild itself: the pad is the later
+	# sibling and must stay drawn above the HUD.
 	if hud != null:
 		hud.queue_free()
-		_build_hud()
+		hud = null
+	# The pad is rebuilt as well, and for a second reason beyond the theme: it is
+	# a sibling *after* the HUD, so freeing only the HUD and adding a new one
+	# would put the new HUD on top of the pad. It would still be pressable (the
+	# HUD ignores the mouse) but every drawn arrow would be behind the task bar.
+	if touch_pad != null:
+		touch_pad.queue_free()
+		touch_pad = null
+	_build_hud()
+	_build_touch_pad()
 	if pause_menu != null:
 		pause_menu.close()
 		pause_menu.queue_free()

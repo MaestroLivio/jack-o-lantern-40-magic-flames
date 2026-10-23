@@ -9,18 +9,18 @@ Jack is a clumsy pumpkin-boy. A gust of wind scattered the **40 Magic Flames of 
 ## Building the release (Windows + macOS)
 
 ```bash
-tools/build_release.sh 1.0.3          # both platforms
-tools/build_release.sh 1.0.3 macos    # macOS only
-tools/build_release.sh 1.0.3 windows  # Windows only
+tools/build_release.sh 1.0.4          # both platforms
+tools/build_release.sh 1.0.4 macos    # macOS only
+tools/build_release.sh 1.0.4 windows  # Windows only
 ```
 
 Output lands in `dist/`:
 
 | Artefact | What it is |
 |---|---|
-| `JackOLantern-Setup-1.0.3.exe` | Windows installer (NSIS, per-user, no admin) |
+| `JackOLantern-Setup-1.0.4.exe` | Windows installer (NSIS, per-user, no admin) |
 | `windows/JackOLantern.exe` | Portable Windows build |
-| `JackOLantern-1.0.3.dmg` | macOS disk image (drag to Applications) |
+| `JackOLantern-1.0.4.dmg` | macOS disk image (drag to Applications) |
 | `macos/JackOLantern.zip` | The `.app` on its own |
 | `README.txt` | Teacher instructions, embedded in both installers |
 
@@ -31,7 +31,7 @@ edits: pass the new number to the script, then update
 `application/file_version` + `application/product_version` (Windows) and
 `application/short_version` + `application/version` (macOS) in
 [`export_presets.cfg`](file:///Users/livioluppino/Downloads/Halloween%20game/export_presets.cfg).
-Skipping the second leaves a 1.0.3 installer wrapping an exe whose Properties
+Skipping the second leaves a 1.0.4 installer wrapping an exe whose Properties
 still say 1.0.0.0 — check with:
 
 ```bash
@@ -42,7 +42,7 @@ ditto -x -k dist/macos/JackOLantern.zip /tmp/v \
 
 # Windows: the version block in the PE resources, read straight from the exe
 python3 -c "d=open('dist/windows/JackOLantern.exe','rb').read(); \
-print('ok' if '1.0.3.0'.encode('utf-16-le') in d else 'STALE VERSION')"
+print('ok' if '1.0.4.0'.encode('utf-16-le') in d else 'STALE VERSION')"
 ```
 
 The macOS build is **universal** (`x86_64` + `arm64`) and **ad-hoc signed**,
@@ -156,6 +156,7 @@ scripts/
     CountingPanel.gd             "Give exactly N" panel
     TitleScreen.gd / ZoneIntroCard.gd / PauseMenu.gd / EndingScreen.gd
     ChallengeHub.gd              The list of the 20 bonus challenges
+    TouchControls.gd             On-screen D-pad for touch screens (foldable)
 ```
 
 ---
@@ -253,6 +254,8 @@ Three things a teacher can change mid-lesson, all saved immediately:
 | **Music / Effects** | OFF · SOFT · MEDIUM · LOUD · MAX, separately | Five named steps rather than a slider: a continuous slider cannot be centred with a seven-year-old's hand. |
 | **VIEW** | AUTO (default) · ALWAYS · NEVER | Whether zooming into the character switches to first person. Applies to the mission already running, so the child sees the change at once. |
 | **Hide the words after a while** | ON (default) · OFF | The task bar folds into a small **TASK** tab and the dialogue box into a **SPEECH** pill after a few seconds, so the world is visible while the child plays. Nothing is lost: one tap on the tab brings the sentence straight back, and folding a dialogue never answers it — only **OK** advances the story. Turn this off to keep both panels on screen all the time. |
+| **Camera follows Jack** | ON (default) · OFF | The view turns by itself to stay behind Jack as he walks, so the child never has to orbit the camera to see where they are going. Touching the look controls at any moment takes over for three seconds, and the automatic turn waits while Jack strafes or walks towards the lens — see `CameraRig.gd` for why that pause is what stops it spinning. |
+| **Buttons on screen** | ON (default) · OFF | A **D-pad**, a **TAP** button and the purple magnifier, for a tablet with no keyboard. On by default because a touch screen has no other way to walk; turn it off on a mouse-and-keyboard machine to give the world the whole left side. A narrow strip at the outer end of the row folds the pad into a small star tab, and tapping the tab brings the buttons back. It also hides itself while a quiz or a dialogue is open, because those take the screen anyway. The whole cluster can be **dragged anywhere** by the dotted grip under the fold strip — or by the star tab once folded — and it stays where it was left, on this machine and the next lesson. |
 
 **Panel minimising.** Every instruction panel can also be folded by hand at any
 moment, whatever this setting says: the task bar has a **–** button on its right,
@@ -265,6 +268,37 @@ including in every menu: the A button presses whatever button is focused, so no
 screen is unreachable with a controller. The keyboard bindings can be rebound on the
 controls page; the gamepad buttons stay put, and the page shows both (`E · Button A`)
 so the second route is always visible.
+
+**Touch screens.** Everything except walking already worked with a finger, because
+a tap *is* a left click and Godot's `emulate_mouse_from_touch` turns one into the
+other: picking up a pumpkin, answering a question, pressing **OK**. What a finger
+cannot do is hold a key down, so 1.0.4 adds the **D-pad** on the left edge. It drives
+the same `Input` actions the keyboard does — walking, not a special path — which is
+why Jack is parked just as firmly during a quiz whether the child holds `W` or the
+arrow on the glass. Its buttons release on `mouse_exited` as well as on lift,
+because a thumb that slides off the edge is a thumb that has stopped pressing, and
+the alternative is a child walking into a wall for the rest of the lesson.
+
+**Moving the buttons.** The pad starts on the left edge, which is where a thumb
+rests on a tablet held in landscape — but a case, a left-handed child or a
+projector can make a different corner the comfortable one, so the cluster is
+draggable. A finger on the three-dot grip under the fold strip (or on the star tab
+while the pad is folded) moves the whole block, and the corner it lands on is
+remembered in the save file alongside the other settings. Every position is
+clamped so the pad can never be dragged off screen: a pad half off the glass has
+no grip left to grab, and getting it back would otherwise mean deleting the save.
+Folding is unaffected — the tab is drawn on the open pad's own corner, so folding
+looks like the pad shrinking rather than jumping, and a drag never counts as a tap.
+A pad dragged back onto its home corner is saved as that corner, not as "never
+moved", so a class that likes the controls on the right keeps them there tomorrow.
+
+**The camera.** With **Camera follows Jack** on, the view drifts back behind him as
+he walks. It stops chasing in two cases, and both are deliberate: while he strafes,
+and while he walks towards the lens. Movement in this game is camera-relative, so a
+chase that kept turning during either of those would rotate what "forward" means,
+turn him as a result, and spin forever — the failure looks like a slow drift and is
+invisible in a screenshot. Grasping the look controls pauses the chase for three
+seconds, so a child who wants a particular view is never fought for it.
 
 ---
 
@@ -513,6 +547,11 @@ godot --headless --path . --script tools/overlap_check.gd
 # owns the screen (the "I answer and he walks off" complaint)
 godot --headless --path . --script tools/input_guard_check.gd
 
+# Assert the on-screen pad exists, walks Jack, releases him, folds to a tab,
+# obeys its settings switch, can be dragged and remembers where it went — and
+# that the automatic camera settles behind him instead of spinning
+godot --headless --path . --script tools/touch_check.gd
+
 # Print every spoken line with a timestamp and report collisions between them
 godot --headless --path . --script tools/speech_timeline.gd 2>&1 \
   | python3 -u tools/stamp_speech.py
@@ -562,8 +601,16 @@ camera does not turn and the interact key does nothing while a quiz or a
 dialogue owns the screen), **no overlapping panels**,
 **23 / 23 graphics assertions**, **880 / 880 voice clips** (the corpus the
 game can say and the manifest agree exactly; 0 misses, 0 clips that fail to
-load), **18 / 18 casing checks** and **11 / 11 shouted sentences still find
-their clip**.
+load), **18 / 18 casing checks**, **11 / 11 shouted sentences still find
+their clip**, and **37 / 37 touch-and-camera checks** (the pad walks Jack
+2.73 m, releasing it stops him within 0.14 m, sliding a thumb off the button
+stops him dead, folding leaves a tab and blocks nothing, the quiz gate holds at
+0.000 m of drift, dragging the grip moves the whole block 528 px and pulls it
+back on screen when it is pushed off the top-left or the bottom-right corner, the
+folded tab lands on the pad's own corner and folding leaves the position
+unchanged, the stored corner is what the pad comes back to, the automatic camera
+settles behind Jack to within 0.02 rad and does not spin while he walks
+forward, and switching it off stops the chase at 0.000 rad).
 
 The last two are new and exist because of a bug a child would hear rather than
 see: the screen says **RED** and the voice said "R-E-D", because espeak-ng reads

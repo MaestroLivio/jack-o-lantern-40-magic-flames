@@ -54,6 +54,20 @@ signal extra_return_requested()
 ## The auto-hide-UI setting changed. Panels that are already open react at once
 ## instead of waiting for the next mission to be built.
 signal auto_hide_ui_changed(enabled: bool)
+## The automatic-camera setting changed. `Level` forwards it to the rig, which
+## starts (or stops) easing its view behind Jack on the mission already running:
+## a teacher who turns it off in the pause menu expects the camera to stop
+## chasing *now*, not after the next flame.
+signal auto_camera_changed(enabled: bool)
+## The on-screen-controls setting changed. The HUD shows or removes the touch
+## pad at once, and the pad releases anything it was holding when it goes.
+signal touch_controls_changed(enabled: bool)
+## The child dragged the on-screen pad somewhere else. `pos` is the top-left
+## corner of the open cluster in canvas pixels, already clamped to the screen by
+## the pad (`TouchControls._clamp_origin()`); the manager stores it and does not
+## second-guess it, because the pad is the only thing that knows how big the
+## block really is on this machine.
+signal touch_pad_position_changed(pos: Vector2)
 
 # --- State -----------------------------------------------------------------
 
@@ -110,6 +124,43 @@ var busy: bool = false
 ## fix. A teacher who prefers the bar to stay put turns it off in SETTINGS, and
 ## the choice is saved with the rest of them.
 var auto_hide_ui: bool = true
+## When true the camera turns itself to stay behind Jack, so a child only has to
+## walk: the view follows whichever way he faces instead of waiting to be
+## dragged. Turned off in SETTINGS by anyone who wants to drive the view by hand.
+##
+## Default ON. The complaint that asked for this was a class where the children
+## spent the whole session dragging the world back round after every corner, and
+## the props the task asked about ended up off screen. A child who has learned
+## the drag gesture loses nothing by leaving it on — a drag still wins for as
+## long as the finger is down, and `AUTO_CAMERA_RESUME` in `CameraRig` only gives
+## the view back to Jack a moment after the hand stops — while a child who never
+## found the gesture at all gets a camera that simply works.
+var auto_camera: bool = true
+## When true the on-screen pad for touch screens is drawn over the world.
+##
+## Default ON and *minimisable* rather than off: the classroom screens this is
+## for are frequently touch laptops and tablets, where a child with no keyboard
+## has no other way to walk. Off by default would mean the one device that needs
+## it is also the one where nobody knows to look in SETTINGS. It costs a mouse
+## user nothing — the pad sits in the bottom corners the task bar only covers
+## while it is open, it folds into a small tab, and it is ignored by the world
+## raycast (`TouchControls.blocks_point()`).
+var touch_controls: bool = true
+## Where the child last dragged the on-screen pad, as the top-left corner of the
+## open cluster in canvas pixels.
+##
+## `Vector2(-1, -1)` means "never moved", and is the default a fresh save gets:
+## the pad then places itself at its measured home on the left edge (see
+## `TouchControls._default_origin()`). A sentinel rather than writing the home
+## position here, because the home position depends on the height of the window,
+## which the manager has no business knowing — and a stored home position would
+## be wrong the first time the game was run at a different resolution.
+##
+## Everything else about the value is deliberately the pad's business. The size
+## of the block is measured after layout (408 x 236 px at 1280x720, not the 392
+## the constants add up to), so only the pad can clamp it, and it clamps before
+## calling `set_touch_pad_position()`.
+var touch_pad_position: Vector2 = Vector2(-1, -1)
 ## The last mission id `advance()` has already moved away from.
 ##
 ## A zone change used to be a *second* async path that could also advance, and a
@@ -430,6 +481,38 @@ func set_auto_hide_ui(enabled: bool) -> void:
 	auto_hide_ui_changed.emit(auto_hide_ui)
 
 
+## Turns the automatic camera on or off, emitting so the rig of the mission that
+## is already running obeys instead of waiting for the next build.
+func set_auto_camera(enabled: bool) -> void:
+	if enabled == auto_camera:
+		return
+	auto_camera = enabled
+	auto_camera_changed.emit(auto_camera)
+
+
+## Shows or removes the on-screen pad, emitting so the overlay appears (or folds
+## away and lets go of any held direction) without a rebuild of the HUD.
+func set_touch_controls(enabled: bool) -> void:
+	if enabled == touch_controls:
+		return
+	touch_controls = enabled
+	touch_controls_changed.emit(touch_controls)
+
+
+## Remembers where the child dragged the on-screen pad.
+##
+## Emits only on a real change, for the same reason the toggles do: `_apply_origin()`
+## listens, and a re-emit of the same value would move the pad again while the
+## same value is set from the pad itself — a signal loop that looks like a stutter.
+## The pad clamps before it gets here, so no validation is repeated; a `Vector2`
+## is not something a child can type into a text field.
+func set_touch_pad_position(pos: Vector2) -> void:
+	if pos.is_equal_approx(touch_pad_position):
+		return
+	touch_pad_position = pos
+	touch_pad_position_changed.emit(touch_pad_position)
+
+
 ## The five volume steps, as linear gains.
 ##
 ## The middle step is *not* 0.5: perceived loudness is roughly logarithmic, so
@@ -506,6 +589,18 @@ func save_progress() -> void:
 		# difficulty already get.
 		"extra_completed": extra_completed,
 		"auto_hide_ui": auto_hide_ui,
+		# Same lenient treatment as `auto_hide_ui` and the volumes: an optional
+		# key with a default, never a `SAVE_VERSION` bump, because bumping the
+		# version would wipe a class's forty flames to remember two switches.
+		"auto_camera": auto_camera,
+		"touch_controls": touch_controls,
+		# The dragged pad position, stored as a two-number array because that is
+		# what `JSON.stringify()` round-trips exactly; a `Vector2` would be
+		# written as a string and read back as one. `(-1, -1)` is the "never
+		# moved" sentinel and is written like any other value, so a child who
+		# drags the pad back onto its home corner still gets their choice saved
+		# rather than being reset to the default on the next launch.
+		"touch_pad_position": [touch_pad_position.x, touch_pad_position.y],
 		"saved_at": Time.get_datetime_string_from_system(),
 	}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -575,6 +670,26 @@ func load_progress() -> void:
 	sfx_volume = clampf(float(data.get("sfx_volume", sfx_volume)), 0.0, 1.0)
 	# Read with a default, not a version bump: see the volume keys above.
 	auto_hide_ui = bool(data.get("auto_hide_ui", auto_hide_ui))
+	# Same rule. The default here is the *declared* one, so a save written
+	# before these two settings existed gets the shipped behaviour (camera
+	# following, pad shown) rather than inheriting whatever the last probe left
+	# in memory.
+	auto_camera = bool(data.get("auto_camera", auto_camera))
+	touch_controls = bool(data.get("touch_controls", touch_controls))
+	# The dragged pad position. Written as a two-number array, so read back as
+	# one and accept nothing else: a hand-edited file with a string, a
+	# dictionary or a single number must fall back to "never moved" rather than
+	# throw, and `Vector2()` at the origin would put the pad in the top-left
+	# corner — a real position, so the child would not even be able to tell it
+	# had been misread. `(-1, -1)` is the sentinel that means "use the default",
+	# and a stored value is *not* clamped here: only the pad knows how big it
+	# really is, so `TouchControls._apply_origin()` clamps every assignment,
+	# including this one.
+	var stored_pad: Variant = data.get("touch_pad_position", [])
+	if stored_pad is Array and (stored_pad as Array).size() == 2:
+		touch_pad_position = Vector2(float(stored_pad[0]), float(stored_pad[1]))
+	else:
+		touch_pad_position = Vector2(-1, -1)
 	# Bonus progress, read leniently for the same reason as the keys above: a
 	# save written before the bonus missions existed simply has no bonus
 	# progress, which is the correct starting state.
@@ -614,6 +729,17 @@ func _reset_state() -> void:
 	difficulty = 3
 	camera_mode = 0
 	auto_hide_ui = true
+	# The two ease-of-play switches go back to their shipped defaults, but only
+	# in `_reset_state()`: they are *playability* settings rather than story
+	# progress, and a reset is asked for precisely by a class that wants the
+	# game as it came out of the box.
+	auto_camera = true
+	touch_controls = true
+	# And the pad goes back to its home corner: it is a playability setting for
+	# the same reason, and a class that asked for a fresh start expects the
+	# controls where the game puts them, not wherever a previous child left them
+	# half off the edge of a different screen.
+	touch_pad_position = Vector2(-1, -1)
 	# Starting over is a story choice, not a settings choice: the bonus
 	# challenges are kept, because "PLAY AGAIN" offers to replay the story and
 	# taking twenty solved puzzles away would punish a class for saying yes.

@@ -9,11 +9,20 @@ extends SceneTree
 ##   DialogueBox      centred bottom, y 384..684
 ##   QuizManager      centred, y  80..640
 ##   RepeatPanel      centred, y  90..630
+##   TouchControls    left edge, x 16..424, y 242..478 *by default*
 ##
 ## So the task bar sits *under* the dialogue box and *under* the bottom of the
 ## quiz, and a child reading with the teacher sees two frames of text on top of
 ## each other. This probe opens each combination in the real game and reports
 ## the overlapping area, in px², for every pair that is visible at once.
+##
+## The pad is in the snapshot too, and it should be *absent* from every sample
+## where a panel owns the screen — that absence is measured, not assumed: a pad
+## left visible over the quiz card is exactly the regression this file exists
+## to catch. Its rect is read from the live node and not from the figures above,
+## which are only where it *starts*: it can be dragged, so on a second run of this
+## probe on a machine whose save file has a moved pad, the block is wherever the
+## child left it. Nothing here depends on it being on the left.
 ##
 ##   godot --path . --headless --script tools/overlap_check.gd
 ##
@@ -136,6 +145,18 @@ func _snapshot() -> Dictionary:
 					_add(found, "quiz panel", _member_rect(child, "_panel"))
 				elif name.contains("Repeat"):
 					_add(found, "repeat panel", _member_rect(child, "_panel"))
+	# The on-screen pad is an overlay like any other: it is drawn over the world
+	# and, since 1.0.4, it is on the left edge (x 16..368, y 242..478) — close
+	# enough to the task bar and the counting card that a future size change
+	# could quietly push it over one of them. It appears in the snapshot only
+	# when the child can actually see it: `_apply_visibility()` hides the whole
+	# node while a quiz, the repeat panel or an unfolded dialogue box owns the
+	# screen, so the "quiz, settled" sample below reports it as absent, which is
+	# the correct answer and not a hole in the measurement.
+	var pad: Control = _main.get("touch_pad") as Control
+	if pad != null and pad.visible:
+		_add(found, "touch pad", _member_rect(pad, "_pad"))
+		_add(found, "touch tab", _member_rect(pad, "_tab"))
 	return found
 
 

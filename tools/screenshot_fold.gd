@@ -40,6 +40,18 @@ func _process(_delta: float) -> bool:
 		if story != null:
 			story.visible = false
 		_main.call("_begin_mission")
+	# --- The on-screen pad, open then folded ------------------------------
+	# Placed before the task-bar shots and closed again before them, because
+	# the pad and the bar share the left half of the screen: a picture taken
+	# with both changed would not say which one moved.
+	if _frame == 140:
+		_save("fold_pad_open")
+	if _frame == 150:
+		_pad().call("set_folded", true)
+	if _frame == 165:
+		_save("fold_pad_folded")
+	if _frame == 172:
+		_pad().call("set_folded", false)
 	# --- The task bar, open then folded -----------------------------------
 	if _frame == 175:
 		_save("fold_bar_open")
@@ -90,6 +102,10 @@ func _process(_delta: float) -> bool:
 
 func _hud() -> Node:
 	return _main.get("hud")
+
+
+func _pad() -> Node:
+	return _main.get("touch_pad")
 
 
 func _quiz() -> Node:

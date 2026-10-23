@@ -42,6 +42,11 @@ const CLICK_REACH := 6.0
 var player: Jack
 var camera_rig: CameraRig
 var hud: Hud
+## The on-screen D-pad overlay, when the child has it switched on. Owned by
+## `Main` (it lives in the UI layer, above the HUD) and handed down here for one
+## reason only: a press on the pad must not also be read as a tap on the world
+## behind it. `null` when the overlay has not been built yet.
+var touch_pad: TouchControls
 var mission_controller: MissionController
 var npc: NpcCharacter
 var current_zone: int = 1
@@ -134,6 +139,10 @@ func _ready() -> void:
 	# mission, and "always first person" that only applies tomorrow would look
 	# broken.
 	QuestManager.camera_mode_changed.connect(_on_camera_mode_changed)
+	# Same reasoning for the automatic camera: it is switched off from the
+	# pause menu, in the middle of a mission, and the view has to stop chasing
+	# Jack the instant the box is ticked — not when the next zone loads.
+	QuestManager.auto_camera_changed.connect(_on_auto_camera_changed)
 
 	level_ready.emit()
 	_start_current_mission()
@@ -165,14 +174,21 @@ func _spawn_camera() -> void:
 	add_child(camera_rig)
 	camera_rig.target = player
 	camera_rig.global_position = player.global_position
-	camera_rig.snap_to_target()
 	# Jack's model has to disappear when the camera steps into his head, and the
 	# HUD has to say how to step back out: the rig owns the mode, but it knows
 	# nothing about the character or the overlay, so the level joins the two.
 	camera_rig.first_person_changed.connect(_on_first_person_changed)
+	# Both settings are applied *before* the first snap. The order mattered: a
+	# snap taken first would frame the zone with the default policy and then be
+	# instantly overruled, which is a visible flick of the whole world on the
+	# first frame of every zone load.
+	#
 	# The settings page can forbid or force first person; the rig has to know
 	# from its very first frame, not after the child opens the pause menu.
 	camera_rig.apply_first_person_policy(QuestManager.camera_mode_id())
+	# Same for the automatic chase: it decides what "behind Jack" means.
+	camera_rig.apply_auto_camera(QuestManager.auto_camera)
+	camera_rig.snap_to_target()
 
 
 func _build_transition_layer() -> void:
@@ -570,6 +586,18 @@ func _process(_delta: float) -> void:
 ## The *folded* box is excluded on purpose: folding it is the child asking to
 ## look at the world, and the task bar is part of that world.
 func _refresh_screen_panels() -> void:
+	# The on-screen pad is hidden while a panel owns the screen: the quiz card
+	# spans x 160..1120 and the pad sits inside that rectangle on the left edge,
+	# so an interactive D-pad over a question is both unusable (movement is
+	# blocked anyway) and in the way of the answer the child is reading.
+	#
+	# Note that this asks `_screen_panel_owns_input()` — the same predicate that
+	# parks Jack — and not the `covered` variable below, which deliberately
+	# excludes the folded dialogue box. A *folded* box is the child asking to
+	# look at the world, and the pad is part of the world.
+	if touch_pad != null and is_instance_valid(touch_pad):
+		touch_pad.set_screen_covered(_screen_panel_owns_input())
+
 	if hud == null:
 		return
 	var covered := dialogue != null and dialogue.visible and not dialogue.is_folded()
@@ -697,6 +725,12 @@ func _try_click(at: Vector2) -> void:
 	# The folded TASK tab is a small button in the corner the world is still
 	# visible behind. A tap on it must unfold the bar and nothing else.
 	if hud != null and hud.blocks_point(at):
+		return
+	# Exactly the same problem for the on-screen D-pad: it sits over the world,
+	# and a touch on "forward" would otherwise also raycast whatever pumpkin is
+	# drawn behind the button. `blocks_point()` is false when the pad is hidden,
+	# so a child with the overlay switched off pays nothing for this check.
+	if touch_pad != null and is_instance_valid(touch_pad) and touch_pad.blocks_point(at):
 		return
 	# The dialogue box ignores the mouse (so its scrim never blocks the world
 	# outside it), which means a click on its OK button reaches this function
@@ -887,6 +921,17 @@ func _on_first_person_changed(in_first_person: bool) -> void:
 func _on_camera_mode_changed(mode: int) -> void:
 	if camera_rig != null:
 		camera_rig.apply_first_person_policy(mode)
+
+
+## The automatic-camera switch changed on the settings page.
+##
+## Only the rig is told. Nothing else has to know: from the outside an automatic
+## chase and a child dragging the view are the same thing, so every other system
+## (camera-relative movement, the click raycast, first-person policy) is already
+## correct for both.
+func _on_auto_camera_changed(enabled: bool) -> void:
+	if camera_rig != null:
+		camera_rig.apply_auto_camera(enabled)
 
 
 ## True when the current mission is holding something the character would take.
