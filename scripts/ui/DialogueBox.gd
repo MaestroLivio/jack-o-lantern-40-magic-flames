@@ -24,7 +24,12 @@ const WRAP_WIDTH := 760.0
 ## finish hearing it, short enough that a child who has understood is not left
 ## staring at a panel. Folding never answers the dialogue: `advanced` is only
 ## emitted by OK, so nothing can be skipped by waiting.
-const AUTO_FOLD_TIME := 7.0
+##
+## 14 s, not the 7 s it was: "finish hearing it" is what moved. Every recorded
+## clip is twice as long now (`--length-scale 2.24` in `make_voice_pack.py`), and
+## a box that folded at seven seconds would fold in the middle of the sentence it
+## is showing. See `Hud.AUTO_FOLD_TIME`.
+const AUTO_FOLD_TIME := 14.0
 
 var _panel: PanelContainer
 var _name_label: Label

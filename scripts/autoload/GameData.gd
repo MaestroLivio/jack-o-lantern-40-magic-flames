@@ -884,7 +884,7 @@ static func missions() -> Array[Dictionary]:
 #     to open these without the game pretending chapter 41 exists.
 #
 # Their ids start at 101 rather than 41 so that no code which still reasons about
-# story ids can mistake one for a story mission. `extra_index` (1..20) is filled
+# story ids can mistake one for a story mission. `extra_index` (1..40) is filled
 # in by `extra_missions()`, because it is the number the HUD shows and it must
 # never drift from the position in this list.
 #
@@ -1153,10 +1153,476 @@ const EXTRA_CHALLENGES: Array[Dictionary] = [
 		"numbers": [6, 12, 18, 24],
 		"pool": [6, 12, 18, 24, 9, 21],
 	},
+
+	# ---------------- Spelling: hear it, write it (21-30) ----------------
+	#
+	# The child hears the word and then its letters, and rebuilds the word by
+	# tapping the letters in order. These are the bonus set's answer to "the
+	# mirror is not enough": the mirror asks the child to *say* a word they have
+	# just heard, which can be done by echo without reading anything. Spelling
+	# the same word is the first task in the game that cannot be done without
+	# knowing which letter is which.
+	#
+	# `word` is written lower case because it is a spoken word; the panel raises
+	# it. `bank` is the set of letters offered, and it is written out by hand for
+	# every mission rather than generated from the word plus random filler:
+	# which wrong letters sit next to a word *is* the exercise. A `D` next to
+	# `bat` tests the mirror-image confusion seven-year-olds actually have; an
+	# `X` next to it tests nothing. For the same reason the bank repeats a letter
+	# where the word does (`apple` needs two `P`s, `broom` two `O`s): a child who
+	# has used the single `P` of a thinner bank would be stuck on a word they
+	# spelled correctly in their head.
+	#
+	# The bank is shuffled per mission by `SpellingPanel` (seeded by the id), so
+	# the order below is the *design* order and never the order on screen.
+	#
+	# All ten live in the dungeon with Echo: this is the "pronunciation" zone of
+	# the story (missions 33-36 are the Magic Mirror), and the exercise is the
+	# next rung of exactly that ladder.
+	{
+		"id": 121, "zone": 5, "title": "Spell: Cat",
+		"title_it": "Scrivi: cat",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "cat",
+		# The shortest word in the set, offered with the two vowels a child most
+		# often reaches for first. Three letters is one look at the word and one
+		# at the bank: the entry point of the whole group.
+		"bank": ["C", "A", "T", "E", "S", "O"],
+	},
+	{
+		"id": 122, "zone": 5, "title": "Spell: Bat",
+		"title_it": "Scrivi: bat",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "bat",
+		# `B` and `D` side by side is the classic reversal, and both are in the
+		# bank on purpose: a child who taps `D` for `bat` has made a real reading
+		# error and should be corrected, not merely stopped.
+		"bank": ["B", "A", "T", "D", "E", "S"],
+	},
+	{
+		"id": 123, "zone": 5, "title": "Spell: Hat",
+		"title_it": "Scrivi: hat",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "hat",
+		# The `H` is the lesson here: it is silent in Italian, so it is the letter
+		# an Italian class drops when writing. `R` sits next to it because `hrat`
+		# is the shape a hurried hand produces.
+		"bank": ["H", "A", "T", "R", "E", "S"],
+	},
+	{
+		"id": 124, "zone": 5, "title": "Spell: Star",
+		"title_it": "Scrivi: star",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "star",
+		"bank": ["S", "T", "A", "R", "E", "O", "L"],
+	},
+	{
+		"id": 125, "zone": 5, "title": "Spell: Ghost",
+		"title_it": "Scrivi: ghost",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "ghost",
+		# Five letters, with the `H` again after the `G` and an `O` that an
+		# Italian reader expects to sound like "o" and an English one like "ou".
+		"bank": ["G", "H", "O", "S", "T", "A", "E", "R"],
+	},
+	{
+		"id": 126, "zone": 5, "title": "Spell: Apple",
+		"title_it": "Scrivi: apple",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "apple",
+		# The first word in the set with a double letter. Two `P`s in the bank,
+		# and the second one only becomes correct after the first has been used:
+		# a child who taps the same key twice is told "not this one" by a key
+		# that has already retired, which is a lesson about spelling, not a trap.
+		"bank": ["A", "P", "P", "L", "E", "O", "S"],
+	},
+	{
+		"id": 127, "zone": 5, "title": "Spell: Broom",
+		"title_it": "Scrivi: broom",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "broom",
+		"bank": ["B", "R", "O", "O", "M", "A", "E", "S"],
+	},
+	{
+		"id": 128, "zone": 5, "title": "Spell: Witch",
+		"title_it": "Scrivi: witch",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "witch",
+		# `W` is the longest letter name in English ("double-u") and the one the
+		# class finds funniest; having it lead a word means the child hears it in
+		# full at the very start.
+		"bank": ["W", "I", "T", "C", "H", "A", "E", "S"],
+	},
+	{
+		"id": 129, "zone": 5, "title": "Spell: Spider",
+		"title_it": "Scrivi: spider",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "spider",
+		# Six letters over two rows of keys. `N` and `O` are the filler pair that
+		# makes `spider` and `spinder`/`spoider` both reachable by a wrong tap.
+		"bank": ["S", "P", "I", "D", "E", "R", "N", "O", "A"],
+	},
+	{
+		"id": 130, "zone": 5, "title": "Spell: Pumpkin",
+		"title_it": "Scrivi: pumpkin",
+		"npc": "Echo the Ghost",
+		"prompt_en": "Listen, then spell the word!",
+		"prompt_it": "Ascolta, poi scrivi la parola!",
+		"mechanic": "spell",
+		"word": "pumpkin",
+		# The longest word the game asks anyone to write, and the only one with
+		# two different doubled consonants to keep apart (`P` ... `K`). Ten keys
+		# is exactly two rows of five: the bank is as wide as the panel allows.
+		"bank": ["P", "U", "M", "P", "K", "I", "N", "A", "E", "S"],
+	},
+
+	# ---------------- Meanings: what does that word mean? (31-40) ----------------
+	#
+	# The mirror image of every quiz in the story. There, the question names an
+	# English word and the child finds the picture. Here the question names the
+	# *meaning* — in Italian, the language the class thinks in — and the child
+	# finds the English word. That is the direction a bilingual teacher actually
+	# uses when checking comprehension, and it is the one direction the story
+	# never tests: a child can answer "Which one is GREEN?" for a whole year by
+	# looking at the colours and never once retrieve the word themselves.
+	#
+	# Every option is marked `show_label: true`, which `QuizManager._make_card()`
+	# honours ahead of the hint policy: at level 3 the word under a picture is
+	# normally withdrawn, but here the word *is* the answer, so three bare
+	# pictures would leave nothing to choose between. All three cards in a
+	# question also share the same icon and colour, for the same reason: a green
+	# square among red ones would answer the question before it was read.
+	#
+	# The Italian word is inside the English sentence ("Which word means
+	# “rosso”?") because that is how the question is asked in class. Being a
+	# word the English voice has never seen, it is pronounced by English rules
+	# -- `rosso` comes out roughly "ross-oh" -- which is close enough to be
+	# recognised, always *written* on screen above the cards, and read properly
+	# by the magnifying glass, which speaks the Italian line.
+	{
+		"id": 131, "zone": 1, "title": "Meanings: Please",
+		"title_it": "Significati: per favore",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “per favore”?",
+		"prompt_it": "Quale parola significa «per favore»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “per favore”?",
+				"it": "Quale parola significa «per favore»?",
+				"options": [
+					{"label": "Please", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Thank you", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Good night", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “grazie”?",
+				"it": "Quale parola significa «grazie»?",
+				"options": [
+					{"label": "Thank you", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Hello", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Please", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 132, "zone": 1, "title": "Meanings: Red",
+		"title_it": "Significati: rosso",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “rosso”?",
+		"prompt_it": "Quale parola significa «rosso»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “rosso”?",
+				"it": "Quale parola significa «rosso»?",
+				"options": [
+					{"label": "Red", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Blue", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Green", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “giallo”?",
+				"it": "Quale parola significa «giallo»?",
+				"options": [
+					{"label": "Yellow", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Purple", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Black", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 133, "zone": 1, "title": "Meanings: Bat & Cat",
+		"title_it": "Significati: pipistrello e gatto",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “pipistrello”?",
+		"prompt_it": "Quale parola significa «pipistrello»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “pipistrello”?",
+				"it": "Quale parola significa «pipistrello»?",
+				"options": [
+					{"label": "Bat", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Cat", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Hat", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “gatto”?",
+				"it": "Quale parola significa «gatto»?",
+				"options": [
+					{"label": "Cat", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Bat", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Frog", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 134, "zone": 1, "title": "Meanings: Animals",
+		"title_it": "Significati: animali",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “ragno”?",
+		"prompt_it": "Quale parola significa «ragno»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “ragno”?",
+				"it": "Quale parola significa «ragno»?",
+				"options": [
+					{"label": "Spider", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Snake", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Owl", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “gufo”?",
+				"it": "Quale parola significa «gufo»?",
+				"options": [
+					{"label": "Owl", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Frog", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Spider", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 135, "zone": 1, "title": "Meanings: Big & Small",
+		"title_it": "Significati: grande e piccolo",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “grande”?",
+		"prompt_it": "Quale parola significa «grande»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “grande”?",
+				"it": "Quale parola significa «grande»?",
+				"options": [
+					{"label": "Big", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Small", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Long", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “triste”?",
+				"it": "Quale parola significa «triste»?",
+				"options": [
+					{"label": "Sad", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Happy", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Funny", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 136, "zone": 1, "title": "Meanings: Body",
+		"title_it": "Significati: il corpo",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “testa”?",
+		"prompt_it": "Quale parola significa «testa»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “testa”?",
+				"it": "Quale parola significa «testa»?",
+				"options": [
+					{"label": "Head", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Hand", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Foot", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “mano”?",
+				"it": "Quale parola significa «mano»?",
+				"options": [
+					{"label": "Hand", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Nose", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Ear", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 137, "zone": 1, "title": "Meanings: Shapes",
+		"title_it": "Significati: le forme",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “quadrato”?",
+		"prompt_it": "Quale parola significa «quadrato»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “quadrato”?",
+				"it": "Quale parola significa «quadrato»?",
+				"options": [
+					{"label": "Square", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Circle", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Triangle", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “stella”?",
+				"it": "Quale parola significa «stella»?",
+				"options": [
+					{"label": "Star", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Circle", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Square", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 138, "zone": 1, "title": "Meanings: Things",
+		"title_it": "Significati: le cose",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “cappello”?",
+		"prompt_it": "Quale parola significa «cappello»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “cappello”?",
+				"it": "Quale parola significa «cappello»?",
+				"options": [
+					{"label": "Hat", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Broom", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Bucket", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “zucca”?",
+				"it": "Quale parola significa «zucca»?",
+				"options": [
+					{"label": "Pumpkin", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Apple", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Lantern", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 139, "zone": 1, "title": "Meanings: Where",
+		"title_it": "Significati: dove",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “sopra”?",
+		"prompt_it": "Quale parola significa «sopra»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				"en": "Which word means “sopra”?",
+				"it": "Quale parola significa «sopra»?",
+				"options": [
+					{"label": "On", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Under", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Behind", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “sotto”?",
+				"it": "Quale parola significa «sotto»?",
+				"options": [
+					{"label": "Under", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "On", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "In", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
+	{
+		"id": 140, "zone": 1, "title": "Meanings: The Big Review",
+		"title_it": "Significati: il grande ripasso",
+		"npc": "Mr. Barnaby",
+		"prompt_en": "Which word means “ecco a te”?",
+		"prompt_it": "Quale parola significa «ecco a te»?",
+		"mechanic": "quiz",
+		"questions": [
+			{
+				# The same sentence mission 5 teaches, asked the other way round.
+				# The class has known this phrase since the first zone, and it is
+				# a whole sentence rather than a word: the only way to answer is
+				# to have understood it, not to have memorised a label.
+				"en": "Which word means “ecco a te”?",
+				"it": "Quale parola significa «ecco a te»?",
+				"options": [
+					{"label": "Here you are", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "How are you", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "Good night", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “come stai”?",
+				"it": "Quale parola significa «come stai»?",
+				"options": [
+					{"label": "How are you", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "I am fine", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "What is your name", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+			{
+				"en": "Which word means “andiamo”?",
+				"it": "Quale parola significa «andiamo»?",
+				"options": [
+					{"label": "Let's go", "icon": "star", "color": "gold", "show_label": true, "correct": true},
+					{"label": "Well done", "icon": "star", "color": "gold", "show_label": true},
+					{"label": "I am fine", "icon": "star", "color": "gold", "show_label": true},
+				],
+			},
+		],
+	},
 ]
 
 
-## The twenty bonus missions, in play order.
+## The forty bonus missions, in play order.
 ##
 ## Built fresh on every call rather than returned as the const list, because each
 ## entry needs its `extra_index` stamped on it and a `const` container is
@@ -1186,6 +1652,59 @@ static func translate(word: String) -> String:
 	if VOCAB.has(key):
 		return String(VOCAB[key])
 	return ""
+
+
+## A word as it is written inside a spoken line: `"pumpkin"` -> `"Pumpkin"`.
+##
+## Only the first letter is raised. `String.capitalize()` would lower-case the
+## rest of the word, which is right for `"PUMPKIN"` but wrong for the two-word
+## entries the vocabulary also holds ("next to", "here you are"), where it would
+## produce "Next to" anyway -- and wrong in a way that is invisible until one of
+## those is used in an exercise.
+static func spelling_word(word: String) -> String:
+	var lower := word.to_lower().strip_edges()
+	if lower.is_empty():
+		return ""
+	return lower.substr(0, 1).to_upper() + lower.substr(1)
+
+
+## The sentence a spelling challenge says: the word, then its letters.
+##
+## `"cat"` -> `"Cat. C, A, T."` Measured with the shipped `cori` voice:
+##
+##     "Cat. C, A, T."  ->  kˈat. sˈiː, ˈeɪ, tˈiː.
+##
+## i.e. the letters come out as letter *names*, which is the lesson, and the
+## word comes out as a word. The obvious alternative -- spelling the letters
+## into the raw text, `"C-A-T"` -- is read as one mangled token (`"c-a-t"` as a
+## single word), and a hyphenated form is also what the child would then see.
+##
+## Assembled here rather than in `SpellingPanel` because
+## `tools/speech_corpus.gd` has to record *exactly* this sentence: a line built
+## by two different rules is a line the pack does not have, and it would fall
+## back to the system voice for the central sentence of ten missions.
+static func spelling_sentence(word: String) -> String:
+	var upper := word.to_upper().strip_edges()
+	if upper.is_empty():
+		return ""
+	var letters := ""
+	for i in upper.length():
+		if i > 0:
+			letters += ", "
+		letters += upper.substr(i, 1)
+	# Built with a loop instead of `String.join()`: join() wants a
+	# `PackedStringArray` and this is a plain string walk (see the same note in
+	# `FindNumbersMission._spoken_list()`).
+	return "%s. %s." % [spelling_word(word), letters]
+
+
+## The line the panel says when the word has been spelled out in full:
+## `"cat"` -> `"Cat. Well done!"`.
+static func spelling_answer(word: String) -> String:
+	var shown := spelling_word(word)
+	if shown.is_empty():
+		return "Well done!"
+	return "%s. Well done!" % shown
 
 
 ## Zone dictionary for a zone id (1-6).

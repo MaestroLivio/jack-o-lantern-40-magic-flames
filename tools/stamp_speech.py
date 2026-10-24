@@ -14,15 +14,18 @@ Reports, with exit code 1 if either happens:
     game uses `interrupt = true`, so the second cuts the first off mid-word.
   * REPEAT   -- the same sentence spoken twice in one run.
 
-The spoken length is estimated at SPEAK_WPM: the rate `AudioFx.speak()`
-defaults to is 0.9 of the system voice's normal speed, and 150 wpm is a fair
-average for the voices Windows and macOS ship, so 135 wpm is the estimate.
+The spoken length is estimated at SPEAK_WPM. Until 1.0.5 this was 135 wpm: the
+rate `AudioFx.speak()` defaults to is 0.9 of the system voice's normal speed,
+and 150 wpm is a fair average for the voices Windows and macOS ship. Since the
+voice pack is recorded with `--length-scale 2.24` (half speed), every *shipped*
+sentence is spoken at half that rate again, so the old estimate would report a
+collision that does not exist. 67.5 wpm is the same measurement halved.
 """
 import re
 import sys
 import time
 
-SPEAK_WPM = 135.0
+SPEAK_WPM = 67.5
 # Words are cheaper to say than they look: leave a beat after the sentence so a
 # line that lands exactly on the estimated end is not reported.
 SLACK_S = 0.15

@@ -121,6 +121,22 @@ static func number_hints_show_digits() -> bool:
 	return level() < 3
 
 
+## Spelling missions (the bonus set) show the word above the letter slots until
+## level 3. Copying the word is the *reading* step; holding five letters in
+## memory after one hearing is the step after, and it is exactly what level 3
+## asks for. The letters that are already placed stay on screen at every level:
+## they are the child's own work, not a hint.
+static func spelling_shows_word() -> bool:
+	return level() < 3
+
+
+## After a wrong letter the key that is actually needed glows, so the next tap
+## cannot fail. Level 3 removes that safety net, consistently with
+## `quiz_reveals_correct()`: at the top level the child finds the letter alone.
+static func spelling_reveals_letter() -> bool:
+	return level() < 3
+
+
 ## The one-line explanation of the active level, for the settings page.
 static func describe() -> String:
 	return String(current_level_info().get("detail", ""))

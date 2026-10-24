@@ -17,7 +17,11 @@ signal progress_changed(index: int, total: int)
 
 ## Seconds the correct answer glows before moving on. Long enough for a
 ## 7-year-old to feel the reward, short enough to keep momentum.
-const REVEAL_TIME := 0.85
+##
+## 1.7 s, not the 0.85 it was: the reward is a *spoken* sentence
+## (`"%s. Well done!"`), and every clip is twice as long at the new recording
+## speed. The old value cut the sentence in half on the next question's line.
+const REVEAL_TIME := 1.7
 
 ## Panel geometry, in viewport pixels at the 1280x720 design size. The panel is
 ## anchored to the centre and grows with the window thanks to `canvas_items`
@@ -34,6 +38,10 @@ const PANEL_H := 560.0
 ## the panel from collapsing (see `UiKit.label`).
 const WRAP_WIDTH := 840.0
 const CARD_SIZE := Vector2(220, 220)
+## Font size of the word under a card's picture, and the floor `_fit_card_label()`
+## will shrink it to. See that method for the measurement.
+const CARD_LABEL_SIZE := 26
+const CARD_LABEL_MIN := 21
 
 var _questions: Array = []
 var _index: int = 0
@@ -353,9 +361,27 @@ func _make_card(opt: Dictionary) -> TextureButton:
 	# spoken word to the *letters* instead of the picture. At level 3 it is
 	# withdrawn, which is the whole point of that level — the card is then just
 	# the picture, and the question above it is still spoken and still written.
-	if Hints.quiz_cards_show_word() and not word.is_empty():
-		var text := UiKit.label(word, 26, UiKit.COL_TEXT, HORIZONTAL_ALIGNMENT_CENTER, false)
+	#
+	# Two things must survive that rule, because without them the question is
+	# literally unanswerable:
+	#
+	# 1. A label the picture cannot carry. The hint policy assumes one picture
+	#    maps onto one word, and that is what makes withdrawing the word fair.
+	#    "Here you are!" (mission 5) breaks that assumption: its cards share the
+	#    `hat` icon with the prompt above them, so at level 3 the three answers
+	#    rendered as three identical hats and the child had nothing to choose
+	#    between (measured: every card bare, all three icons the same texture).
+	#    A label with a space is a phrase, and a phrase is never on the picture.
+	# 2. A label that *is* the answer, flagged per option with `show_label`.
+	#    The meaning quizzes ("Which word means «ecco a te»?") show three single
+	#    words over three identical icons on purpose: the word is the thing being
+	#    tested, so hiding it would leave three indistinguishable cards.
+	var carries_own_word := word.contains(" ")
+	var label_is_answer := bool(opt.get("show_label", false))
+	if (Hints.quiz_cards_show_word() or carries_own_word or label_is_answer) and not word.is_empty():
+		var text := UiKit.label(word, CARD_LABEL_SIZE, UiKit.COL_TEXT, HORIZONTAL_ALIGNMENT_CENTER, false)
 		text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fit_card_label(text)
 		content.add_child(text)
 
 	card.add_child(content)
@@ -370,6 +396,33 @@ func _card_style(fill: Color, border: Color, width: int) -> StyleBoxFlat:
 	s.set_corner_radius_all(26)
 	s.anti_aliasing = true
 	return s
+
+
+## Shrinks one card label until it fits inside the card, and never below
+## `CARD_LABEL_MIN`.
+##
+## A card is `CARD_SIZE.x` wide with 12 px of padding per side, and the label is a
+## single line (wrapping would let it collapse to a sliver, see `UiKit.label`), so
+## a long phrase simply draws out over the border. Measured with the shipped font
+## stack: "What is your name" is 226 px at 26 px — 30 px wider than the 196 px a
+## card has. Rather than shortening the sentence, which is the whole reading
+## content of the meaning quizzes, the label gives ground: 22 px still reads
+## clearly at a child's reading distance, and the majority of labels never move.
+##
+## The floor exists because the alternative — a loop with no lower bound — turns
+## one absurd label into 8 px text. Below it the label is left at the floor and
+## allowed to be slightly wide, which is a smaller failure than unreadable.
+func _fit_card_label(label: Label) -> void:
+	var width := CARD_SIZE.x - 24.0
+	var size := CARD_LABEL_SIZE
+	var font := label.get_theme_font("font")
+	while size > CARD_LABEL_MIN:
+		var measured := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		if measured <= width:
+			break
+		size -= 1
+	if size != CARD_LABEL_SIZE:
+		label.add_theme_font_size_override("font_size", size)
 
 
 func _clear_cards() -> void:
@@ -421,7 +474,9 @@ func _reward(card: Control, opt: Dictionary) -> void:
 
 	_index += 1
 	QuestManager.step_changed.emit(mini(_index, _questions.size()), _questions.size())
-	await get_tree().create_timer(REVEAL_TIME + 0.35).timeout
+	# `REVEAL_TIME` already holds the whole sentence now; the extra beat is what
+	# lets the last syllable finish before the next question is read.
+	await get_tree().create_timer(REVEAL_TIME + 0.7).timeout
 	if not is_inside_tree():
 		return
 	_show_question()

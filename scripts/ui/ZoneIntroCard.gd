@@ -8,7 +8,13 @@ extends Control
 
 signal dismissed
 
-const AUTO_CLOSE_TIME := 5.0
+## Seconds the card stays on screen before closing itself. The card reads its
+## title aloud, and every recorded clip is twice as long now that the pack is
+## recorded at half speed for 1.0.5: at the old 5.0 the card closed while its own
+## title was still being said, and the next page's line cut it off mid-word
+## (`tools/speech_timeline.gd` measured the title at 6.1 s). A tap still closes
+## it early, so a class that has read it does not wait.
+const AUTO_CLOSE_TIME := 10.0
 
 ## Panel geometry and the inner width its wrapped text is laid out at (see
 ## `UiKit.label` for why that width must be explicit).

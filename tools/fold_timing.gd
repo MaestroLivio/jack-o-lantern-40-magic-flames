@@ -10,8 +10,11 @@ extends SceneTree
 ##
 ##   godot --path . --headless --script tools/fold_timing.gd
 ##
-## It takes about 25 seconds because it waits out the real delays on purpose. A
-## shortened copy of the timer would test the copy, not the game.
+## It takes about 50 seconds because it waits out the real delays on purpose. A
+## shortened copy of the timer would test the copy, not the game. The delays
+## doubled in 1.0.5 (see `Hud.AUTO_FOLD_TIME`): every recorded sentence is twice
+## as long now, so a bar that folded after five seconds folded over the spoken
+## task.
 
 var _failures: Array[String] = []
 var _checks := 0
@@ -57,23 +60,28 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# --- The bar folds itself after five seconds ---------------------------
+	# --- The bar folds itself after ten seconds ----------------------------
 	_quest.call("start_mission", 1)
 	await _wait(1.0)
 	_check("bar is still open one second in (it must be readable)",
 		not bool(_hud.call("is_prompt_collapsed")))
 	await _wait(2.0)
 	_check("bar is still open three seconds in", not bool(_hud.call("is_prompt_collapsed")))
-	await _wait(3.0)
-	_check("bar folded itself after about five seconds",
+	# Nine seconds in, still open: this is the half of the delay that matters at
+	# the new speech speed, because the task itself now takes about six seconds
+	# to say. A timer that ignored the doubled clips would have folded here.
+	await _wait(6.0)
+	_check("bar is still open nine seconds in", not bool(_hud.call("is_prompt_collapsed")))
+	await _wait(2.0)
+	_check("bar folded itself after about ten seconds",
 		bool(_hud.call("is_prompt_collapsed")),
-		"waited 6 s in total")
+		"waited 11 s in total")
 
 	# --- Turning the setting off stops the timer --------------------------
 	_quest.call("set_auto_hide_ui", false)
 	await _wait(0.4)
 	_check("turning it off unfolds the bar", not bool(_hud.call("is_prompt_collapsed")))
-	await _wait(6.0)
+	await _wait(11.0)
 	_check("with the setting off the bar stays open past the delay",
 		not bool(_hud.call("is_prompt_collapsed")))
 
@@ -82,13 +90,13 @@ func _run() -> void:
 	await _wait(0.5)
 	_check("turning it on leaves the bar open at first",
 		not bool(_hud.call("is_prompt_collapsed")))
-	await _wait(5.5)
+	await _wait(10.5)
 	_check("turning it on folds the bar of the running mission",
 		bool(_hud.call("is_prompt_collapsed")))
 
 	# --- A mission that ends inside the delay cannot fold the next bar ----
 	# This is the `_prompt_token` guard. `start_mission` is deliberately called
-	# faster than the five-second delay, in the same way the smoke test walks
+	# faster than the ten-second delay, in the same way the smoke test walks
 	# forty missions back to back.
 	#
 	# Only `find` missions are used: a `repeat` or `quiz` mission takes the task
@@ -101,7 +109,7 @@ func _run() -> void:
 		if id != 8:
 			_check("mission %d bar still open 1 s in" % id,
 				not bool(_hud.call("is_prompt_collapsed")))
-	await _wait(4.5)
+	await _wait(9.5)
 	_check("after a burst of missions the last bar folds once, on time",
 		bool(_hud.call("is_prompt_collapsed")))
 

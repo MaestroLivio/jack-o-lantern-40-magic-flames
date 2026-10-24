@@ -16,7 +16,13 @@ extends Control
 signal finished
 signal line_completed(index: int, total: int)
 
-const MIN_LISTEN_TIME := 0.6
+## The shortest time after a replay at which SAY IT! is accepted.
+##
+## It is a *speech* timeout, not a UI one: a sentence lasts about twice as long
+## now that the pack is recorded at half speed, and pressing SAY IT! halfway
+## through the clip is still "not having listened". Doubled with the recordings
+## for 1.0.5, from 0.6 s.
+const MIN_LISTEN_TIME := 1.2
 
 ## Panel geometry and the inner width its wrapped text is laid out at (see
 ## `UiKit.label` for why that width must be explicit).
@@ -44,9 +50,13 @@ var _fold_tab: Button
 var _folded := false
 
 ## Mirrors the quiz's ratio here: a mirror sentence is read, not answered, so the
-## six seconds are counted from the moment the voice stops rather than from the
-## moment the panel appears.
-const AUTO_FOLD_TIME := 8.0
+## time is counted from the moment the voice stops rather than from the moment
+## the panel appears.
+##
+## 16 s, not the 8 s it was: the two listenings this waits for are of a clip that
+## is twice as long now that the pack is recorded at half speed. See
+## `Hud.AUTO_FOLD_TIME` for the same change and the same reason.
+const AUTO_FOLD_TIME := 16.0
 
 
 func _ready() -> void:

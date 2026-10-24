@@ -36,10 +36,12 @@ signal camera_mode_changed(mode: int)
 ## A volume setting changed. `channel` is "music" or "sfx".
 signal volume_changed(channel: String, value: float)
 ## Every bonus challenge is done. Separate from `all_missions_completed`, which
-## is the end of the story: a class that finishes the twenty extras has not
+## is the end of the story: a class that finishes the forty extras has not
 ## finished the lantern, and the two endings must not be the same screen.
 signal extra_challenges_completed()
-## One bonus challenge was solved. `index` is 1..20, `total` always 20.
+## One bonus challenge was solved. `index` and `total` count the whole list,
+## which is forty (`GameData.EXTRA_CHALLENGES.size()`), not a literal here:
+## the list doubled in 1.0.5 and this doc line was the only place that said 20.
 ## Named `..._solved` and not `extra_completed` because that identifier is the
 ## saved array of solved indices: GDScript refuses a signal and a variable that
 ## share a name, and the array is the one that has to keep its name (the save
@@ -186,7 +188,7 @@ var _save_warned: bool = false
 
 ## --- Bonus challenges ------------------------------------------------------
 ##
-## The twenty bonus missions live outside the story: they are not in
+## The forty bonus missions live outside the story: they are not in
 ## `completed_missions`, they do not add flames, and they are not counted by
 ## `TOTAL_MISSIONS`. They are tracked here in their own three fields so that
 ## finishing them can never disturb a single number the story depends on.
@@ -196,11 +198,11 @@ var _save_warned: bool = false
 ## ask `current_mission()` and get the bonus one, ask `current_zone_info()` and
 ## get the zone it happens to take place in.
 ##
-## `extra_completed` holds *indices* (1..20), not mission ids: the id space of
+## `extra_completed` holds *indices* (1..the list size), not mission ids: the id space of
 ## the bonus list is an implementation detail, and a save file that stored ids
 ## would break the day a mission is inserted in the middle of the list.
 var extra_active: bool = false
-## Which bonus challenge is running, 1..20. 0 when none is.
+## Which bonus challenge is running, 1..40. 0 when none is.
 var extra_index: int = 0
 ## Bonus challenges already solved, as indices.
 var extra_completed: Array[int] = []
@@ -284,7 +286,7 @@ func start_mission(mission_id: int) -> void:
 	mission_started.emit(m)
 
 
-## Starts bonus challenge `index` (1..20).
+## Starts bonus challenge `index` (1..40).
 ##
 ## `current_mission_id` is deliberately *not* touched: the story has to be
 ## exactly where the class left it when they come back, and `current_zone` does

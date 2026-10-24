@@ -164,7 +164,11 @@ func duck_for_speech(text: String, seconds: float = 0.0) -> void:
 	if secs <= 0.0:
 		var words := text.split(" ", false).size()
 		# ~2.6 words per second is the measured pace of the system voice at the
-		# game's default rate; the extra 0.6 s covers the release of the sentence.
+		# game's default rate. Only the *fallback* path reaches this: a sentence
+		# that has a recorded clip passes its real length in `seconds`, and every
+		# clip is now recorded at half speed, so 2.6 would under-estimate by half.
+		# The number is kept at the system voice's pace on purpose — it describes
+		# that voice, not the pack — and the extra 0.6 s covers the release.
 		secs = words / 2.6 + 0.6
 	# Floor of 0.8 s so a one-word line still ducks audibly; ceiling because a
 	# long clip whose stream was freed mid-play must not hold the music down.

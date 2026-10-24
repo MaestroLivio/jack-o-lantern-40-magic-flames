@@ -27,6 +27,13 @@ signal easy_read_changed(enabled: bool)
 signal sound_changed(enabled: bool)
 ## Opens the dedicated volume page (music and sound effects, separately).
 signal sound_settings_pressed
+## Opens the teacher menu: every mission, jump straight to any of them.
+##
+## It sits at the very bottom of the page, under its own divider, because it is
+## the one control here that is *not* for the child. Nothing protects it — see
+## `TeacherMenu` for why a password would be theatre — so its only defence is
+## being visually outside the list of things a child came here to do.
+signal teacher_pressed
 
 ## Panel height in design pixels. It stacks a title, four actions, a divider,
 ## the difficulty row, two switches and QUIT. The row heights and the compact
@@ -171,6 +178,35 @@ func _build() -> void:
 	quit.pressed.connect(func(): quit_pressed.emit())
 	v.add_child(quit)
 
+	# --- Teacher: last, and behind its own divider ---
+	#
+	# The one control on this page that is not for the child. A divider is the
+	# whole of its protection: the page had 61 px of slack before this row
+	# existed (measured 639 of content inside a 700 px frame), and the row costs
+	# 2 px of rule + 2 px of gap + the button. `layout_check.gd` measured the
+	# first attempt at 699 of 700 — fitting, but with no room for a font change —
+	# so the button's own padding was cut to 2 px above and below (see
+	# `_compact_flat()`) rather than shrinking the label or the touch target.
+	#
+	# Its own divider rather than sharing the one above the difficulty row: that
+	# divider groups "the things you change", and the teacher button is neither
+	# one of those nor one of the actions above it.
+	var teacher_divider := ColorRect.new()
+	teacher_divider.color = UiKit.COL_TEXT_DIM.darkened(0.3)
+	teacher_divider.custom_minimum_size = Vector2(0, 2)
+	v.add_child(teacher_divider)
+
+	var teacher := UiKit.button("TEACHER MENU", null, Vector2(430, 40))
+	teacher.add_theme_font_size_override("font_size", 21)
+	teacher.tooltip_text = "Open any mission, for the teacher"
+	teacher.add_theme_stylebox_override("normal", _style(UiKit.COL_PANEL.darkened(0.15), UiKit.COL_TEXT_DIM.darkened(0.35), 3, 20))
+	teacher.add_theme_stylebox_override("hover", _style(UiKit.COL_PANEL.darkened(0.05), UiKit.COL_BLUE, 4, 20))
+	teacher.pressed.connect(func(): teacher_pressed.emit())
+	# Flattened *after* its styles are in place: the helper rewrites the padding
+	# of the boxes it finds, so calling it first would only see the theme's own.
+	_compact_flat(teacher)
+	v.add_child(teacher)
+
 	refresh_difficulty()
 
 
@@ -190,6 +226,22 @@ func _style(fill: Color, border: Color, border_width: int, radius: int = 24) -> 
 	style.content_margin_top = 4
 	style.content_margin_bottom = 4
 	return style
+
+
+## Squeezes the vertical padding of the style boxes a button already carries.
+##
+## Only the teacher button uses it, and it is *not* a variant of `_compact()`:
+## that one installs a whole set of styles and would overwrite the two the
+## teacher row sets for itself (a dimmer fill, a blue hover). This one only
+## rewrites the padding of whatever boxes are already there, which is why it has
+## to be called after them.
+func _compact_flat(button: Button) -> Button:
+	for state in ["normal", "hover", "focus", "pressed", "disabled"]:
+		var style := button.get_theme_stylebox(state) as StyleBoxFlat
+		if style != null:
+			style.content_margin_top = 2
+			style.content_margin_bottom = 2
+	return button
 
 
 ## Shows the current level's name and its one-line explanation, and disables an

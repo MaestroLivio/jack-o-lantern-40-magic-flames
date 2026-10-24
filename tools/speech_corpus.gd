@@ -39,9 +39,9 @@ static func build(data: Node, story: Node) -> Array:
 	var it: Dictionary = {}
 
 	for m in data.call("missions"):
-		_mission(m as Dictionary, en, it)
+		_mission(m as Dictionary, data, en, it)
 	for m in data.call("extra_missions"):
-		_mission(m as Dictionary, en, it)
+		_mission(m as Dictionary, data, en, it)
 	for chapter in story.call("all_pages"):
 		_page(chapter as Dictionary, en, it)
 	for zone in data.get("ZONES"):
@@ -70,7 +70,12 @@ static func build(data: Node, story: Node) -> Array:
 ## props, the quiz questions and their answer labels, the lines to repeat, the
 ## body parts of the hands-on mission, and the praise/correction sentences each
 ## mission script can produce.
-static func _mission(m: Dictionary, en: Dictionary, it: Dictionary) -> void:
+##
+## `data` is the `GameData` node, and it is passed in rather than reached for: two
+## of the sentences below are *assembled* by `GameData` helpers
+## (`spelling_sentence`, `spelling_answer`) and re-typing them here would make the
+## corpus a second, silently diverging definition of what the game says.
+static func _mission(m: Dictionary, data: Node, en: Dictionary, it: Dictionary) -> void:
 	_store(en, m.get("prompt_en", ""))
 	_store(it, m.get("prompt_it", ""))
 	_store(en, m.get("title", ""))
@@ -152,6 +157,26 @@ static func _mission(m: Dictionary, en: Dictionary, it: Dictionary) -> void:
 					else:
 						_store(en, String(d.get("word", "")))
 						_store(en, "Find %s first!" % String(d.get("word", "")))
+		"spell":
+			# The two sentences `SpellingPanel` assembles itself instead of reading
+			# from the data: the word plus its letters ("Cat. C, A, T.") and the
+			# congratulation. They go through the same `GameData` helpers the panel
+			# calls, so the recorded clip cannot drift from the spoken one — a
+			# hand-written copy here would be a second definition of a sentence
+			# that is already defined once, which is how the corpus went wrong the
+			# first time.
+			var word := String(m.get("word", "")).to_lower()
+			if not word.is_empty():
+				# The letters are said one at a time as each is accepted
+				# (`AudioFx.speak(letter)`), so every single letter needs a clip.
+				# `_store` upper-cases nothing: the capital letters that make the
+				# pack say "see" rather than "cuh" are produced by
+				# `GameData.spelling_sentence()`, and the ones spoken on their own
+				# are already capitals in `SpellingPanel`.
+				for i in word.length():
+					_store(en, word.substr(i, 1).to_upper())
+				_store(en, String(data.call("spelling_sentence", word)))
+				_store(en, String(data.call("spelling_answer", word)))
 	# The panel scripts also praise and correct generically.
 	for line in ["Not this one. Try again!", "Well done!", "Not this one."]:
 		_store(en, line)

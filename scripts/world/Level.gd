@@ -28,6 +28,11 @@ const MECHANICS := {
 	# than in a second registry that would drift from this one.
 	"coords": "res://scripts/missions/CoordsMission.gd",
 	"find_numbers": "res://scripts/missions/FindNumbersMission.gd",
+	# Spelling is bonus-only: no story mission asks the child to write a word,
+	# because writing is the one skill the forty flames never test (they read,
+	# listen, count and move). Registering it here rather than in a second
+	# registry keeps this table the single answer to "what can a mission be?".
+	"spell": "res://scripts/missions/SpellingMission.gd",
 }
 
 @export var player_scene_path: NodePath
@@ -476,7 +481,10 @@ func _celebrate_flame() -> void:
 		tween.chain().tween_callback(flame.queue_free)
 
 	_spawn_star_burst()
-	await get_tree().create_timer(2.2).timeout
+	# The flame's own reward line ("A magic flame! 7") is spoken here and is now
+	# twice as long, so the celebration holds for twice as long before the next
+	# mission is built. A 2.2 s hold cut the sentence off mid-word.
+	await get_tree().create_timer(4.4).timeout
 	if not is_inside_tree():
 		return
 	# The QA harness disables auto-advance so it can set up every mission itself.
@@ -951,9 +959,12 @@ func play_finale() -> void:
 	AudioFx.play_sfx("win")
 	AudioFx.speak("Happy Halloween! You lit all forty flames. Well done, Jack!")
 	QuestManager.feedback.emit("HAPPY HALLOWEEN!", "BUON HALLOWEEN!", "success")
-	await get_tree().create_timer(1.2).timeout
+	# The closing sentence is the longest in the game and is now spoken at half
+	# speed: the three firework bursts are spaced to land *around* it rather than
+	# over the top of it, which is why these waits doubled with the recordings.
+	await get_tree().create_timer(2.4).timeout
 	_spawn_fireworks()
-	await get_tree().create_timer(1.2).timeout
+	await get_tree().create_timer(2.4).timeout
 	_spawn_fireworks()
 
 

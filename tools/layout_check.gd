@@ -154,7 +154,7 @@ func _run() -> void:
 	await _wait(4.5)
 	_report("ending", _main.get("ending_screen"))
 
-	# The bonus challenge list. It is the only page with twenty buttons on it and
+	# The bonus challenge list. It is the only page with forty buttons on it and
 	# the one that gains a three-character "OK · " prefix once a challenge is
 	# solved, so it is measured before and after a solve: the prefix is exactly
 	# the kind of thing that widens a fixed-size button past the panel edge.
@@ -181,12 +181,43 @@ func _run() -> void:
 		_quest.call("complete_current")
 		await _wait(0.3)
 		_report("hubSolved", hub)
+		# The second page. Forty entries are paged twenty at a time, and the
+		# spelling and meaning titles ("Spell: Pumpkin", "Meanings: The Big
+		# Review") are the longest in the list, so measuring only the first page
+		# would leave exactly the labels most likely to overflow unmeasured.
+		hub.call("_turn_page", 1)
+		await _wait(0.3)
+		_report("hubPage2", hub)
+		hub.call("_turn_page", -1)
+		await _wait(0.2)
 		_quest.set("extra_active", false)
 		_quest.set("extra_index", 0)
 		_quest.get("extra_completed").clear()
 		_quest.call("set_difficulty", 1)
 		hub.call("close")
 		await _wait(0.3)
+	# The teacher's page: forty mission buttons, measured at every difficulty for
+	# the same reason as the hub — the entry text comes from `GameData`, and a
+	# title that only overflows at level 3 would be invisible to a single run.
+	# It is opened through the pause menu (`_on_teacher`) rather than by calling
+	# `open()` directly, so what is measured is the page as a teacher really
+	# reaches it, pause menu hidden and all.
+	var teacher: Control = _main.get("teacher_menu")
+	if teacher == null:
+		_fail("teacher", "node missing")
+	else:
+		for help_level in [1, 2, 3]:
+			_quest.call("set_difficulty", help_level)
+			_main.call("_on_pause")
+			await _wait(0.3)
+			_main.call("_on_teacher")
+			await _wait(0.4)
+			_report("teacherL%d" % help_level, teacher)
+			_main.call("_on_teacher_back")
+			await _wait(0.2)
+			_main.call("_on_resume")
+			await _wait(0.2)
+		_quest.call("set_difficulty", 1)
 	_finish()
 
 

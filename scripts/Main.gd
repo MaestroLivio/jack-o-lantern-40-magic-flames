@@ -38,6 +38,10 @@ var pause_menu: PauseMenu
 ## draws on top of it without touching the 3D world.
 var controls_panel: ControlsPanel
 var sound_panel: SoundPanel
+## The teacher's page: all forty missions, jump to any of them. A sibling of the
+## pause menu on the same layer, opened from the bottom of it, and hidden rather
+## than freed while open so its forty buttons stay out of the focus chain.
+var teacher_menu: TeacherMenu
 ## True while `_quit_cleanly()` is winding down, so the shutdown cannot start twice.
 var _quitting := false
 ## The story page shown between missions. Like the other menus it is built once
@@ -45,9 +49,14 @@ var _quitting := false
 ## opens (and the layout probe can measure it like any other page).
 var story_screen: StoryScreen
 var ending_screen: EndingScreen
-## The list of the twenty bonus challenges. Built once and reused, like the other
+## The list of the forty bonus challenges. Built once and reused, like the other
 ## menus, so its buttons exist for the layout probe whether or not it is open.
 var challenge_hub: ChallengeHub
+## Set when the challenge list was opened from the teacher's page, so BACK goes
+## to the pause menu (where the teacher came from) instead of falling through to
+## the title screen. Cleared as soon as the list is closed one way or another, so
+## the flag can never leak into a later visit.
+var _challenges_back_to_pause := false
 
 var _previous_amount := 0
 
@@ -88,7 +97,7 @@ func _ready() -> void:
 	# the 40 missions automatically and prints the result. It is used to check
 	# that no mission crashes without playing the whole game by hand.
 	# `-- --smoke --autoplay` additionally solves each mission.
-	# `-- --smoke --autoplay --extra` walks the twenty bonus challenges instead
+	# `-- --smoke --autoplay --extra` walks the forty bonus challenges instead
 	# of the story: they are a separate list with a separate flow
 	# (`QuestManager.start_extra`), so the story harness would never build them.
 	var args := OS.get_cmdline_user_args()
@@ -306,6 +315,15 @@ func _build_menus() -> void:
 	challenge_hub.challenge_pressed.connect(_on_challenge_pressed)
 	challenge_hub.back_pressed.connect(_on_challenges_back)
 
+	# The teacher's page. Built with everything else so the layout probe can
+	# measure its forty entries whether or not a teacher has opened it.
+	teacher_menu = TeacherMenu.new()
+	teacher_menu.name = "TeacherMenu"
+	menu_layer.add_child(teacher_menu)
+	teacher_menu.mission_pressed.connect(_on_teacher_mission)
+	teacher_menu.challenges_pressed.connect(_on_teacher_challenges)
+	teacher_menu.back_pressed.connect(_on_teacher_back)
+
 
 ## Wires the pause menu's signals. Shared by `_build_menus()` and `_rebuild_ui()`
 ## because the easy-read toggle recreates the menu from scratch: a signal that
@@ -321,6 +339,7 @@ func _connect_pause_menu() -> void:
 	pause_menu.sound_changed.connect(_on_sound_changed)
 	pause_menu.difficulty_pressed.connect(_on_difficulty)
 	pause_menu.sound_settings_pressed.connect(_on_sound_settings)
+	pause_menu.teacher_pressed.connect(_on_teacher)
 
 
 ## Wires the volume page. Shared by both build paths for the same reason as
@@ -590,7 +609,13 @@ func _autoplay_mission(mission: Dictionary, mechanic: String) -> bool:
 				while panel.visible and not solved_flag[0] and guard < 12:
 					guard += 1
 					panel._on_replay()
-					await get_tree().create_timer(0.7).timeout
+					# Wait out the panel's own "listen first" gate instead of
+					# using a literal: `MIN_LISTEN_TIME` is a *speech* timeout and
+					# it doubles with the recordings (see its comment in
+					# `RepeatPanel`), so a hard-coded 0.7 s here silently became
+					# a press the panel refused — the run then reported five
+					# `repeat` missions as unsolvable while the game was fine.
+					await get_tree().create_timer(panel.MIN_LISTEN_TIME + 0.15).timeout
 					panel._on_mic()
 					# 0.9s "GREAT!" beat + 0.35s before the next line speaks.
 					await get_tree().create_timer(1.45).timeout
@@ -629,6 +654,30 @@ func _autoplay_mission(mission: Dictionary, mechanic: String) -> bool:
 				(child as LearningProp).interact()
 				wanted.erase((child as LearningProp).number)
 				await get_tree().create_timer(0.08).timeout
+		"spell":
+			# Spell the word the way a child would: ask the panel which letter it
+			# wants next, then press exactly that key. `press_letter()` is a
+			# public helper on the panel written for this harness — walking the
+			# private `_keys` arrays from here would let the test disagree with
+			# the panel about what a "correct letter" is, which is precisely the
+			# bug the test exists to catch elsewhere. The loop waits on
+			# `solved_flag` as well as on the index, because the panel holds the
+			# last letter on screen for ~1.1 s before it emits `finished`.
+			var panel: SpellingPanel = controller.get_node_or_null("SpellingPanel")
+			if panel != null:
+				var door := 0
+				while not panel.visible and door < 30:
+					door += 1
+					await get_tree().create_timer(0.1).timeout
+				var guard := 0
+				while panel.visible and not solved_flag[0] and guard < 200:
+					guard += 1
+					# A wrong letter would still be recoverable (the panel never
+					# fails a word), but pressing the expected one is what a
+					# child does after listening, and it keeps this run short.
+					if not panel.press_letter(panel.expected_letter()):
+						await get_tree().create_timer(0.1).timeout
+					await get_tree().create_timer(0.12).timeout
 
 	# Give the flame/last animation time to emit `solved` (solve() waits 0.2s).
 	var settle := 0.0
@@ -723,6 +772,9 @@ func _on_title_settings() -> void:
 func _on_title_challenges() -> void:
 	if challenge_hub == null:
 		return
+	# Every entry into the list starts by assuming the way back is the title:
+	# the teacher's page is the one caller that overrides it afterwards.
+	_challenges_back_to_pause = false
 	screen = Screen.CHALLENGES
 	title_screen.close()
 	ending_screen.close()
@@ -734,6 +786,9 @@ func _on_title_challenges() -> void:
 ## `mission_started` path, so nothing here spawns props itself.
 func _on_challenge_pressed(index: int) -> void:
 	challenge_hub.close()
+	# The list is no longer behind anything: whatever the next BACK belongs to,
+	# it is not the teacher's page.
+	_challenges_back_to_pause = false
 	screen = Screen.PLAYING
 	_set_gameplay_active(true)
 	QuestManager.start_extra(index)
@@ -742,6 +797,16 @@ func _on_challenge_pressed(index: int) -> void:
 ## BACK from the challenge list.
 func _on_challenges_back() -> void:
 	challenge_hub.close()
+	# Opened from the teacher's page: return to the pause screen it came from,
+	# which is the only page in the game that opened it *from a mission*. Checked
+	# before the ending and before the flames, because a teacher can open this at
+	# mission 1 with an empty lantern, where the fallback below would send them
+	# to the title.
+	if _challenges_back_to_pause:
+		_challenges_back_to_pause = false
+		screen = Screen.PAUSE
+		pause_menu.open(0.0)
+		return
 	# Where to return depends on where the hub was opened from. The ending is
 	# the one case with a *different* page behind it: a class that has just
 	# finished the story must not be dropped on the title with PLAY AGAIN.
@@ -826,6 +891,83 @@ func _on_sound_back() -> void:
 	if pause_menu != null:
 		pause_menu.visible = true
 		UiKit.focus_first_button(pause_menu)
+
+
+# --- Teacher menu ----------------------------------------------------------
+
+## Opens the teacher's page from the bottom of the pause screen.
+##
+## The pause menu is *hidden*, not closed and not freed, for the same reason the
+## controls page hides it: a visible KEEP PLAYING behind an open page is a button
+## a leaning child can press, and the forty mission buttons need the keyboard
+## focus chain to themselves. Hiding also means BACK returns to a page that is
+## already in the state it was left in (difficulty, switches), instead of
+## replaying its fade and re-syncing its toggles.
+##
+## The gameplay stays parked: `_on_pause()` already called
+## `level.set_gameplay_live(false)`, and nothing here raises it. A teacher who
+## opens a mission from this page gets a fresh build, which is what announces the
+## task aloud and hands control to the child.
+func _on_teacher() -> void:
+	if teacher_menu == null:
+		return
+	if pause_menu != null:
+		pause_menu.visible = false
+	teacher_menu.open()
+
+
+## BACK from the teacher's page: the pause menu comes back, with the focus on
+## KEEP PLAYING rather than on the button that was pressed, so the next press of
+## the A button resumes the game instead of reopening this page.
+func _on_teacher_back() -> void:
+	if teacher_menu == null:
+		return
+	teacher_menu.close()
+	if pause_menu != null:
+		pause_menu.visible = true
+		UiKit.focus_first_button(pause_menu)
+
+
+## A mission was chosen from the teacher's page.
+##
+## `start_mission()` is the same call the sequence uses, so the mission is built
+## by the normal path: zone fade, world, character, task read aloud. The story
+## page is deliberately *not* pushed here — a teacher jumping to mission 21 has
+## already read chapter 21 out loud, and shoving it in front of the class would
+## make the shortcut slower than playing the game.
+##
+## `_story_shown` still has to be told the page was seen, otherwise the mission
+## the class actually reaches in the sequence would open with a chapter they were
+## given no credit for having read: they would get it twice. Marking it here is
+## the honest reading of "the teacher skipped it".
+func _on_teacher_mission(mission_id: int) -> void:
+	teacher_menu.close()
+	if pause_menu != null:
+		pause_menu.close()
+	screen = Screen.PLAYING
+	_set_gameplay_active(true)
+	if not _story_shown.has(mission_id):
+		_story_shown.append(mission_id)
+	QuestManager.start_mission(mission_id)
+
+
+## The EXTRA CHALLENGES button on the teacher's page.
+##
+## Same destination as the title's, with one difference in where BACK leads: the
+## class was in the middle of a mission and the pause page is what they left, so
+## the list returns there rather than to the title (`_challenges_back_to_pause`).
+## Without it, a teacher who opened the list from mission 1 with no flames would
+## press BACK and be dropped on the title screen, having lost the pause menu they
+## started from.
+func _on_teacher_challenges() -> void:
+	teacher_menu.close()
+	if pause_menu != null:
+		pause_menu.close()
+	_on_title_challenges()
+	# Set *after* the call above, because `_on_title_challenges()` clears it: the
+	# title and the ending are the two screens whose BACK leads somewhere else,
+	# and the flag has to describe the visit that is actually happening.
+	_challenges_back_to_pause = true
 
 
 ## A volume level changed on the sound page. The page has already applied and
@@ -967,6 +1109,20 @@ func _rebuild_ui() -> void:
 		sound_panel.name = "SoundPanel"
 		menu_layer.add_child(sound_panel)
 		_connect_sound_panel()
+	# The teacher's page is forty buttons of themed text like everything else, so
+	# the easy-read font has to reach it too. Rebuilt right after the sound page
+	# for the one ordering reason that matters: it must be a later sibling than
+	# the pause menu, so it draws *over* the page it was opened from rather than
+	# under it. `_build_menus()` adds it last for the same reason.
+	if teacher_menu != null:
+		teacher_menu.close()
+		teacher_menu.queue_free()
+		teacher_menu = TeacherMenu.new()
+		teacher_menu.name = "TeacherMenu"
+		menu_layer.add_child(teacher_menu)
+		teacher_menu.mission_pressed.connect(_on_teacher_mission)
+		teacher_menu.challenges_pressed.connect(_on_teacher_challenges)
+		teacher_menu.back_pressed.connect(_on_teacher_back)
 	# The story page's buttons are themed too. It is rebuilt with everything else
 	# so the easy-read font reaches the chapter text as well — a menu recreated in
 	# only one of the two build paths would silently keep the old font.
@@ -1082,7 +1238,7 @@ func _menu_owns_screen() -> bool:
 	if screen != Screen.PLAYING:
 		return true
 	for panel in [hud, pause_menu, controls_panel, sound_panel, story_screen,
-			zone_intro, title_screen, ending_screen, challenge_hub]:
+			zone_intro, title_screen, ending_screen, challenge_hub, teacher_menu]:
 		if panel != null and (panel as Control).visible:
 			return true
 	if level != null:
@@ -1122,10 +1278,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if story_screen != null and story_screen.visible:
 		return
 	if event.is_action_pressed("pause"):
-		# Escape is also the "cancel" of the key-rebinding page and of the sound
-		# page: closing one of those must never also resume the game in a
-		# single keystroke.
-		if sound_panel != null and sound_panel.visible:
+		# Escape is also the "cancel" of the key-rebinding page, the sound page
+		# and the teacher's page: closing one of those must never also resume the
+		# game in a single keystroke.
+		if teacher_menu != null and teacher_menu.visible:
+			_on_teacher_back()
+		elif sound_panel != null and sound_panel.visible:
 			_on_sound_back()
 		elif controls_panel != null and controls_panel.visible:
 			_on_controls_back()

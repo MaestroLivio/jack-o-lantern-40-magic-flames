@@ -9,18 +9,18 @@ Jack is a clumsy pumpkin-boy. A gust of wind scattered the **40 Magic Flames of 
 ## Building the release (Windows + macOS)
 
 ```bash
-tools/build_release.sh 1.0.4          # both platforms
-tools/build_release.sh 1.0.4 macos    # macOS only
-tools/build_release.sh 1.0.4 windows  # Windows only
+tools/build_release.sh 1.0.5          # both platforms
+tools/build_release.sh 1.0.5 macos    # macOS only
+tools/build_release.sh 1.0.5 windows  # Windows only
 ```
 
 Output lands in `dist/`:
 
 | Artefact | What it is |
 |---|---|
-| `JackOLantern-Setup-1.0.4.exe` | Windows installer (NSIS, per-user, no admin) |
+| `JackOLantern-Setup-1.0.5.exe` | Windows installer (NSIS, per-user, no admin) |
 | `windows/JackOLantern.exe` | Portable Windows build |
-| `JackOLantern-1.0.4.dmg` | macOS disk image (drag to Applications) |
+| `JackOLantern-1.0.5.dmg` | macOS disk image (drag to Applications) |
 | `macos/JackOLantern.zip` | The `.app` on its own |
 | `README.txt` | Teacher instructions, embedded in both installers |
 
@@ -31,7 +31,7 @@ edits: pass the new number to the script, then update
 `application/file_version` + `application/product_version` (Windows) and
 `application/short_version` + `application/version` (macOS) in
 [`export_presets.cfg`](file:///Users/livioluppino/Downloads/Halloween%20game/export_presets.cfg).
-Skipping the second leaves a 1.0.4 installer wrapping an exe whose Properties
+Skipping the second leaves a 1.0.5 installer wrapping an exe whose Properties
 still say 1.0.0.0 — check with:
 
 ```bash
@@ -42,7 +42,7 @@ ditto -x -k dist/macos/JackOLantern.zip /tmp/v \
 
 # Windows: the version block in the PE resources, read straight from the exe
 python3 -c "d=open('dist/windows/JackOLantern.exe','rb').read(); \
-print('ok' if '1.0.4.0'.encode('utf-16-le') in d else 'STALE VERSION')"
+print('ok' if '1.0.5.0'.encode('utf-16-le') in d else 'STALE VERSION')"
 ```
 
 The macOS build is **universal** (`x86_64` + `arm64`) and **ad-hoc signed**,
@@ -155,7 +155,9 @@ scripts/
     RepeatPanel.gd               Magic Mirror (listen & repeat)
     CountingPanel.gd             "Give exactly N" panel
     TitleScreen.gd / ZoneIntroCard.gd / PauseMenu.gd / EndingScreen.gd
-    ChallengeHub.gd              The list of the 20 bonus challenges
+    ChallengeHub.gd              The list of the 40 bonus challenges
+    TeacherMenu.gd               Teacher page: open any of the 40 missions
+    SpellingPanel.gd             "Hear it, write it" letter panel
     TouchControls.gd             On-screen D-pad for touch screens (foldable)
 ```
 
@@ -176,20 +178,42 @@ Every one of the 40 missions is data — a dictionary in `GameData.missions()` �
 | `grid` | 37, 38, 39 | Walk a 10×10 board to coordinates A1–J10. |
 | `coords` | **bonus 1–10** | The same board with the target tiles **not lit**: read the coordinate and walk it. Traps still bounce back, obstacles block the straight line. |
 | `find_numbers` | **bonus 11–20** | Find a *set* of numbers ("3, 7 and 12") in any order, on a board that also carries wrong digits. |
+| `spell` | **bonus 21–30** | Hear the word and its letters, then tap the right letters in order to build it on screen. A wrong letter wobbles; at levels 1–2 the needed key glows. |
+| `quiz` (meanings) | **bonus 31–40** | Read "Which word means *per favore*?" and pick the English word. The cards show the words themselves — that is the thing being tested. |
 
 ---
 
-## The 20 bonus challenges
+## The 40 bonus challenges
 
 Reachable from the title screen (**CHALLENGES**) and from the ending screen, because
 a class may never go back to the title. They are **optional**: no flame, no chapter,
 no effect on the story or its ending. Each one returns to the list when solved,
-which is also the only way out — nobody is walked into the twentieth.
+which is also the only way out — nobody is walked into the fortieth.
 
-They live in `GameData.EXTRA_CHALLENGES` with ids **101–120**, deliberately outside
+They live in `GameData.EXTRA_CHALLENGES` with ids **101–140**, deliberately outside
 the 1–40 story id range so no story code can mistake one for a mission. Progress is
 saved separately (`extra_completed`) and survives *PLAY AGAIN*, because replaying
 the story should not punish a class for the puzzles it has already solved.
+
+The list is **paged**, twenty at a time. Forty entries do not fit a single 1280×720
+page: the grid was already at its minimum height with four rows and zero slack, so
+the page controls sit in the same row as BACK and cost no vertical space. The split
+is also a topic: page 1 is the board and number challenges (1–20), page 2 is the
+spelling and meaning ones (21–40).
+
+**Spelling (21–30).** Echo says the word, then its letters ("Cat. C, A, T."), and
+the child rebuilds it by tapping the letters in order on a bank that includes
+distractors. A wrong letter wobbles and says "not this one"; at levels 1–2 the key
+that is needed glows. Nothing can be failed — the exercise always ends with the word
+spelled out. Letter *names* are pronounced correctly because the sentence is built
+by `GameData.spelling_sentence()` with each letter as its own capital: the voice
+says "see", not "cuh".
+
+**Meanings (31–40).** "Which word means «per favore»?" with three English words to
+choose from. These are `quiz` missions with `show_label: true` on every option: the
+picture is decoration, the word is the answer. That flag is also what fixed mission
+5, whose three "Here you are / How are you / Good night" cards shared one hat icon
+and rendered as three identical bare hats at level 3.
 
 ---
 
@@ -240,7 +264,7 @@ prop that silently collapses back to a cube fails a test rather than a lesson.
 - High-contrast palette, thick borders, 28–40 px type.
 - **Easy-read letters** toggle in the pause menu switches the whole UI to OpenDyslexic / Atkinson Hyperlegible (SystemFont fallback stack, so it works without downloading a font).
 - Every key word has a **procedurally drawn icon** — text is never the only channel.
-- Slow pacing: no timers anywhere, ×0.9 speech rate, 0.85 s reveal on correct answers.
+- Slow pacing: no timers anywhere, **half-speed recorded speech** (see "Voice" below), 1.7 s reveal on correct answers.
 
 ---
 
@@ -262,6 +286,26 @@ moment, whatever this setting says: the task bar has a **–** button on its rig
 the dialogue box has one next to **OK**, and each leaves a small tab in the same
 corner it came from. The counting bag (**MY BAG**) folds into a **BAG n/N** tab
 the same way. A folded panel is never gone, only out of the way.
+
+## Teacher menu (pause → TEACHER MENU)
+
+The story is strictly sequential, and a class that is told *"we did numbers last
+week, can we do the castle?"* still needs a way to get there. The last row of the
+pause screen — under its own divider, below **QUIT** — opens a page with **all
+forty missions** as buttons, plus a link to the bonus challenges.
+
+* **Tap any mission** and the class starts it immediately: same build, same zone,
+  same character, same spoken task. Only the story page is skipped, because a
+  teacher who jumped to mission 21 has already read chapter 21 aloud.
+* **Green entries** are missions the class has already solved. The border colour
+  is the zone, so the six chapters read as blocks at a glance.
+* **Nothing is saved.** Jumping to mission 30 and then quitting relaunches at the
+  first unsolved mission, exactly as the game has always done. Afterwards the
+  class continues from mission 30 in sequence, because the flame that ends it
+  advances to 31 — no progress is lost and none is invented.
+* **No password.** The page is out of a child's way because it sits below a
+  divider under QUIT, not because it is locked: a lock would be theatre on a
+  machine whose owner is the teacher standing in front of it.
 
 **Controls.** Mouse (drag to look around, wheel to zoom), keyboard, or **gamepad** —
 including in every menu: the A button presses whatever button is focused, so no
@@ -399,7 +443,7 @@ normalize_speech()` and `normalize()` in `tools/make_voice_pack.py`): whitespace
 curly quotes folded, and short all-caps keywords de-shouted — because a key that differs by
 one apostrophe, or by the case of `RED`, is a sentence that falls back to the system voice.
 
-Measured: **880 sentences** (714 English, 166 Italian), ~32 minutes of audio, **13.0 MB**
+Measured: **1057 sentences** (English + Italian), **~67 minutes** of audio, **~23 MB**
 at Vorbis `-q 3`. That is the corpus *after* removing the sentences that no code path
 speaks: an earlier build recorded 1017 entries because the collector synthesised
 `"Go to C4."` for all hundred cells and `"Magic Flame! %d / 40"` for all forty flames —
@@ -409,6 +453,17 @@ both guesses about a template nothing builds (the real `Go to …` prompts are l
 spoken by the OS voice — a teacher's freshly edited line, a mission added after the last
 build — so the game never goes silent; the miss is recorded (`voice_pack_misses`) for
 `tools/voice_pack_check.gd` to report.
+
+**Half speed.** Since 1.0.5 every clip is recorded with `--length-scale 2.24`, which is
+the voice's own pace times 1.12 (the old setting) times 2. A class that has just started
+English cannot follow the pitch of a normal reading rate, and slowing the *recording* is
+what fixes it for every sentence at once — changing `rate` in `AudioFx.speak()` would
+only touch the system-voice fallback, leaving the shipped clips at full speed. Every
+timer that was tuned against the length of a spoken line doubled with the clips; each one
+says so in its own comment (`Hud.AUTO_FOLD_TIME`, `RepeatPanel.AUTO_FOLD_TIME`,
+`DialogueBox.AUTO_FOLD_TIME`, `QuizManager.REVEAL_TIME`, the flame celebration, the
+finale fireworks, `SpellingPanel._finish()`), and `tools/stamp_speech.py`'s words-per-
+minute estimate halved with them.
 
 ```bash
 # once, in a throwaway venv (the models are 113 MB and are NOT in the repo)
@@ -433,8 +488,8 @@ prove only that two tools agree with each other, not that either matches the gam
 
 `voice_pack_check.gd` replays that list through `speak()` and fails on any line the pack
 cannot serve, or on a manifest entry whose clip will not load — the two silent ways the
-voice can become inconsistent mid-lesson. It reports both counts (`corpus=880,
-manifest=880`) because the two faults are different: a *miss* means nobody recorded a
+voice can become inconsistent mid-lesson. It reports both counts (`corpus=1057,
+manifest=1053`) because the two faults are different: a *miss* means nobody recorded a
 sentence the game says, whereas an oversized manifest just means the pack still carries
 clips for sentences a mission used to say. Only misses and broken clips fail the run.
 
@@ -527,7 +582,7 @@ godot --headless --path . -- --smoke
 # Build AND solve all 40 missions (exercises every interaction handler)
 godot --headless --path . -- --smoke --autoplay
 
-# Build AND solve the 20 bonus challenges instead of the story
+# Build AND solve the 40 bonus challenges instead of the story
 godot --headless --path . -- --smoke --autoplay --extra
 
 # Check that every overlay panel fits the 1280x720 design viewport
@@ -591,17 +646,23 @@ within that dialog's frame. Both are what break when a wrapping `Label` is
 allowed to collapse — see the note under "Layout rules" below.
 
 Result of the last run: **40 / 40 missions built, 40 solved, 0 failures** (all
-nine mechanics exercised end to end, no script errors), **20 / 20 bonus
-challenges built and solved**, **78 / 78 panels inside the viewport** (every
+eleven mechanics exercised end to end, no script errors), **40 / 40 bonus
+challenges built and solved** (including the ten spelling ones, driven through
+`SpellingPanel.press_letter()`), **82 / 82 panels inside the viewport** (every
 overlay, every story page at all three difficulty levels, the volume page at
-all five volume settings and all three view modes, and the challenge list at
-all three difficulty levels both before and after a challenge is solved),
-**33 / 33 fold checks**, **6 / 6 input-guard checks** (Jack moves 0.000 m, the
+all five volume settings and all three view modes, the challenge list at all
+three difficulty levels both before and after a challenge is solved, on both of
+its pages, and the teacher's page with all forty mission buttons),
+**33 / 33 fold checks**, **12 / 12 auto-fold timing checks** (the bar is still
+open nine seconds in, folds at ten, and a burst of forty missions folds the last
+bar exactly once — the timings doubled with the recordings), **6 / 6 input-guard
+checks** (Jack moves 0.000 m, the
 camera does not turn and the interact key does nothing while a quiz or a
 dialogue owns the screen), **no overlapping panels**,
-**23 / 23 graphics assertions**, **880 / 880 voice clips** (the corpus the
-game can say and the manifest agree exactly; 0 misses, 0 clips that fail to
-load), **18 / 18 casing checks**, **11 / 11 shouted sentences still find
+**23 / 23 graphics assertions**, **1057 / 1053 voice clips** (the corpus the
+game can say is covered exactly — four of the 1057 lines are shared clips, so the
+manifest is smaller than the corpus and the checker counts both; 0 misses, 0 clips
+that fail to load), **18 / 18 casing checks**, **11 / 11 shouted sentences still find
 their clip**, and **37 / 37 touch-and-camera checks** (the pad walks Jack
 2.73 m, releasing it stops him within 0.14 m, sliding a thumb off the button
 stops him dead, folding leaves a tab and blocks nothing, the quiz gate holds at
@@ -632,12 +693,17 @@ genuine leak stays visible instead of drowning in expected noise.
 first task — and stamps every line. The last measured run:
 
 ```
-  1.10 s  The Whispering Pumpkin Patch. Colours & greetings
-  6.35 s  The Lantern With No Light
- 18.10 s  The Whispering Pumpkin Patch
- 26.91 s  Find the RED, BLUE and YELLOW pumpkins!
+  0.88 s  The Whispering Pumpkin Patch. Colours & greetings
+  9.12 s  The Lantern With No Light
+ 17.88 s  The Whispering Pumpkin Patch
+ 26.67 s  Find the Red, BLUE and YELLOW pumpkins!
 4 line(s), no collisions
 ```
+
+The zone card's own auto-close doubled with these timings too (`ZoneIntroCard.
+AUTO_CLOSE_TIME`, 5 s → 10 s): at half speed the card's title runs 6.1 s, so at
+the old value the card closed while it was still being read and the next page's
+line cut it off — measured, not hypothetical.
 
 The probe "reads" each page for eight seconds before pressing GO ON, because a
 page never advances by itself: dismissing it on the first visible frame would

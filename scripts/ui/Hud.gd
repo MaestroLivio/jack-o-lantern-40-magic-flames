@@ -404,23 +404,37 @@ func blocks_point(at: Vector2) -> bool:
 	return _prompt_tab.get_global_rect().has_point(at)
 
 
+## Seconds the instruction bar stays open before folding itself away, when the
+## `auto_hide_ui` setting is on. See `_schedule_auto_fold()` for the reasoning.
+##
+## Named rather than written at the call site because it is tuned against the
+## *length of the spoken task*: when the voice pack was re-recorded at half speed
+## for 1.0.5 every clip doubled, and this is the number that had to double with
+## it. A literal in the middle of an `await` is easy to miss when the next
+## recording happens.
+const AUTO_FOLD_TIME := 10.0
+
 ## Folds the bar after the child has had time to read it, when the setting is on.
 ##
 ## The delay is the whole design of this feature: folding the bar the instant a
 ## mission starts would hide the task before anybody read it, which is worse
-## than covering the world. Five seconds is about two readings of a one-line
-## prompt at this reading level, and the tab stays on screen the whole time so
-## nothing is lost — the child can bring the sentence back with one press.
+## than covering the world. Ten seconds is about two readings of a one-line
+## prompt at this reading level *and* one full hearing of it: the recorded voice
+## was slowed to half speed for 1.0.5, which doubled the length of every clip the
+## game speaks, so the five seconds this used to be would have started folding
+## the bar while the task was still being said. The tab stays on screen the whole
+## time, so nothing is lost — the child can bring the sentence back with one
+## press.
 ##
 ## `token` guards against the obvious race: a mission can be solved and the next
-## one started inside those five seconds (`--smoke` does it forty times in a
-## row), and a timer left over from the previous mission would fold the new
-## bar while the child was still reading it.
+## one started inside those ten seconds (`--smoke` does it forty times in a row),
+## and a timer left over from the previous mission would fold the new bar while
+## the child was still reading it.
 func _schedule_auto_fold(token: int) -> void:
 	if not QuestManager.auto_hide_ui:
 		expand_prompt()
 		return
-	await get_tree().create_timer(5.0).timeout
+	await get_tree().create_timer(AUTO_FOLD_TIME).timeout
 	if not is_inside_tree() or token != _prompt_token:
 		return
 	collapse_prompt()

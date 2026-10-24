@@ -183,8 +183,11 @@ def main():
     ap.add_argument("--en", required=True, help="path to the English .onnx voice")
     ap.add_argument("--it", default="", help="path to the Italian .onnx voice")
     ap.add_argument("--godot", default="/Applications/Godot.app/Contents/MacOS/Godot")
-    ap.add_argument("--length-scale", type=float, default=1.12,
-                    help="1.0 is the voice's own pace; >1 is slower")
+    ap.add_argument("--length-scale", type=float, default=2.24,
+                    help="1.0 is the voice's own pace; >1 is slower. Default 2.24 "
+                         "= the voice's pace times 1.12 times 2: the shipped pack "
+                         "is recorded at half speed, because the class asked for "
+                         "every sentence to be spoken 50% more slowly")
     ap.add_argument("--sample", default="", help="say this one sentence and stop")
     ap.add_argument("--dry-run", action="store_true",
                     help="list what would be generated, without synthesising")
